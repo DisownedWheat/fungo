@@ -1,6 +1,8 @@
 // AST NODES
 
-pub type ASTString = String;
+use std::rc::Rc;
+
+pub type ASTString = Rc<String>;
 pub type LogicBlock = Vec<ASTNode>;
 pub type TokenPosition = (usize, usize);
 
@@ -35,6 +37,7 @@ pub enum IdentifierType {
     ArrayDestructure(Vec<IdentifierType>, Option<Type>),
     RecordDestructure(Vec<IdentifierType>, Option<Type>),
     TupleDestructure(Vec<IdentifierType>, Option<Type>),
+    Bucket,
 }
 
 // Types
@@ -49,9 +52,9 @@ pub struct Type {
 
 #[derive(Debug)]
 pub enum TypeDef {
-    Type(ASTString, Type),
-    EnumDefinition(ASTString, EnumDefiniton),
-    RecordDefinition(ASTString, RecordDefinition),
+    Type(Type),
+    EnumDefinition(EnumDefiniton),
+    RecordDefinition(RecordDefinition),
 }
 
 // Records
@@ -64,6 +67,7 @@ pub struct RecordDefinitionField {
 
 #[derive(Debug)]
 pub struct RecordDefinition {
+    pub name: ASTString,
     pub fields: Vec<RecordDefinitionField>,
 }
 
@@ -109,7 +113,7 @@ pub struct Tuple {
 
 #[derive(Debug)]
 pub struct EnumDefiniton {
-    // pub name: ASTString,
+    pub name: ASTString,
     pub fields: Vec<(ASTString, Option<Type>)>,
 }
 
@@ -134,6 +138,7 @@ pub struct Assign {
 
 #[derive(Debug)]
 pub enum ASTNode {
+    Bucket,
     Root(Vec<ASTNode>),
     LogicBlock(LogicBlock),
     GoImport(GoImport),
@@ -161,6 +166,9 @@ pub enum ASTNode {
 impl ASTNode {
     pub fn print(&self) {
         match self {
+            Self::Bucket => {
+                println!("Bucket");
+            }
             Self::Root(nodes) => {
                 println!("Root");
                 nodes.iter().for_each(|node| node.print());

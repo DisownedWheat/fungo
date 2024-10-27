@@ -1,29 +1,32 @@
-import "fmt"
-let mut text = 1
+open "fmt"
+let mutable text = 1
 
-type testRecord = {
-	testVal: []*int
-	mut anotherTest: string
+type TestRecord = {
+	TestVal: []*int
+	mutable AnotherTest: string
 }
 
-pub fn (t *testRecord) getValue() {
-	t.testVal
-}
+type TestADT =
+	| Test
+	| Testing(string)
 
-fn main() {
+let getValue (&t: *TestRecord) = t.testVal
+
+let main () = (
 	let record = {
-		testVal: 1,
-		anotherTest: "Hello World"
+		TestVal: 1,
+		AnotherTest: "Hello World"
 	}
 
 	|> fn (x) {
-		x.anotherTest = "Hello Again"
+		x.AnotherTest = "Hello Again"
 		x
 	}
 	|> fmt.Println
-	return
-}
+	()
+)
 
-pub fn test(testValue: testRecord) -> int {
-	testValue.testVal
-}
+let test testValue = (
+	testValue.TestVal
+)
+

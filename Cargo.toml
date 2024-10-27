@@ -1,8 +1,11 @@
 [package]
-name = "chumsky-test"
+name = "fungo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+env_logger = "0.11.5"
+log = "0.4.22"
 ariadne = "0.4.1"
 chumsky = "0.9.3"
+logos = "0.14.2"
