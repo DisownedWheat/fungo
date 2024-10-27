@@ -6,6 +6,8 @@ use ast::GoImport;
 use ast::Identifier;
 use ast::IdentifierType;
 use ast::LetExpression;
+use ast::RecordDefinition;
+use ast::RecordDefinitionField;
 use ast::Type;
 use ast::TypeDef;
 use chumsky::prelude::*;
@@ -146,9 +148,42 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 }
             }))
     })
-    .map(|x| ASTNode::TypeDefinition(TypeDef::Type(x)));
+    .map(|x| TypeDef::Type(x));
 
-    let type_ = token(TokenKind::TypeKeyword).map(|_| ASTNode::NoOp);
+    let record_definition = recursive(|r| {
+        ident
+            .clone()
+            .then_ignore(token(TokenKind::Colon).boxed())
+            .then(type_literal.clone().or(r.clone()))
+            .separated_by(comma().ignored())
+            .delimited_by(lbrace(), rbrace())
+            .map(|x| RecordDefinition {
+                fields: x
+                    .into_iter()
+                    .map(|(ident, t_)| match ident {
+                        (ASTNode::Identifier(IdentifierType::Identifier(
+                            Identifier { value, .. },
+                            _,
+                        )),) => RecordDefinitionField {
+                            name: value,
+                            type_: t,
+                        },
+                        _ => panic!(),
+                    })
+                    .collect(),
+            })
+    });
+
+    let type_ = token(TokenKind::TypeKeyword)
+        .ignore_then(ident.clone())
+        .then_ignore(token(TokenKind::Assign))
+        .then(choice((type_literal, record_definition)))
+        .map(|(ident, t_)| match ident {
+            ASTNode::Identifier(IdentifierType::Identifier(Identifier { value, .. }, _)) => {
+                ASTNode::TypeDefinition(value.clone(), t_)
+            }
+            _ => panic!(),
+        });
 
     let expr = recursive(|expr| any().map(|_| ASTNode::NoOp));
 

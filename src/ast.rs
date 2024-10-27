@@ -62,12 +62,10 @@ pub enum TypeDef {
 pub struct RecordDefinitionField {
     pub name: ASTString,
     pub type_: TypeDef,
-    pub is_pub: bool,
 }
 
 #[derive(Debug)]
 pub struct RecordDefinition {
-    pub name: ASTString,
     pub fields: Vec<RecordDefinitionField>,
 }
 
@@ -113,7 +111,6 @@ pub struct Tuple {
 
 #[derive(Debug)]
 pub struct EnumDefiniton {
-    pub name: ASTString,
     pub fields: Vec<(ASTString, Option<Type>)>,
 }
 
@@ -121,7 +118,7 @@ pub struct EnumDefiniton {
 pub enum TopLevel {
     FunctionDefinition(FunctionDefinition),
     StructMethodDefinition(ASTString, FunctionDefinition),
-    TopLevelTypeDef(TypeDef),
+    TopLevelTypeDef(ASTString, TypeDef),
 }
 
 #[derive(Debug)]
@@ -157,7 +154,7 @@ pub enum ASTNode {
     Assign(Assign),
     Enum(EnumDefiniton),
     Tuple(Tuple),
-    TypeDefinition(TypeDef),
+    TypeDefinition(ASTString, TypeDef),
     TopLevel(bool, TopLevel),
     NoOp,
     EOF,
