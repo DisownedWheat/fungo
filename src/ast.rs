@@ -33,7 +33,7 @@ pub struct Accessor {
 
 #[derive(Debug)]
 pub enum IdentifierType {
-    Identifier(Identifier, Option<Type>),
+    Identifier(ASTString, Option<Type>),
     ArrayDestructure(Vec<IdentifierType>, Option<Type>),
     RecordDestructure(Vec<IdentifierType>, Option<Type>),
     TupleDestructure(Vec<IdentifierType>, Option<Type>),
@@ -43,7 +43,7 @@ pub enum IdentifierType {
 impl IdentifierType {
     pub fn get_name(&self) -> Option<ASTString> {
         match self {
-            IdentifierType::Identifier(identifier, _) => Some(identifier.value.clone()),
+            IdentifierType::Identifier(identifier, _) => Some(identifier.clone()),
             _ => None,
         }
     }
@@ -106,18 +106,11 @@ pub struct LetExpression {
 
 // Functions
 #[derive(Debug)]
-pub struct FunctionArgument {
-    pub identifier: IdentifierType,
-    pub mutable: bool,
-}
-
-#[derive(Debug)]
 pub struct FunctionDefinition {
     pub name: Option<ASTString>,
-    pub arguments: Vec<FunctionArgument>,
+    pub arguments: Vec<IdentifierType>,
     pub return_type: Option<Type>,
     pub body: LogicBlock,
-    pub pointer: Option<Identifier>,
 }
 
 #[derive(Debug)]
