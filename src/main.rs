@@ -360,26 +360,33 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
 
         let let_stmt = recursive(|ls| {
-            token(TokenKind::Let).ignore_then(choice((
-                (token(TokenKind::Mut)
-                    .or_not()
-                    .map(|x| x.is_some())
-                    .then(let_identifier)
-                    .then_ignore(assign())
-                    .then(ls.clone())
-                    .map(|((mutable, name), value)| {
-                        let identifier = match name {
-                            ASTNode::Identifier(n) => n,
-                            _ => panic!(),
-                        };
-                        ASTNode::LetExpression(LetExpression {
-                            identifier,
-                            value: Box::new(value),
-                            mutable,
-                        })
+            let val = token(TokenKind::Mut)
+                .or_not()
+                .map(|x| x.is_some())
+                .then(let_identifier)
+                .then_ignore(assign())
+                .then(ls.clone())
+                .map(|((mutable, name), value)| {
+                    let identifier = match name {
+                        ASTNode::Identifier(n) => n,
+                        _ => panic!(),
+                    };
+                    ASTNode::LetExpression(LetExpression {
+                        identifier,
+                        value: Box::new(value),
+                        mutable,
                     })
-                    .boxed()),
-                (ident_token
+                })
+                .boxed();
+            let func = {
+                let exprs = choice((
+                    ls.clone().map(|x| vec![x]),
+                    lparen()
+                        .ignore_then(ls.clone().repeated())
+                        .then_ignore(rparen()),
+                ))
+                .boxed();
+                let idents = ident_token
                     .clone()
                     .then(
                         ident
@@ -388,16 +395,20 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                             .or(unit().clone().map(|_| vec![]))
                             .boxed(),
                     )
-                    .then(colon().then(type_literal.clone()).or_not())
+                    .boxed();
+                let return_type = colon().then(type_literal.clone()).or_not().boxed();
+                idents
+                    .then(return_type)
                     .then_ignore(assign())
-                    .then(ls.clone().repeated())
+                    .then(exprs)
                     .map(|x| {
                         ASTNode::FunctionDefinition(FunctionDefinition {
                             name,
                             arguments: args,
                         })
-                    })),
-            )))
+                    })
+            };
+            token(TokenKind::Let).ignore_then(choice((val, func)))
         })
         .boxed();
 
