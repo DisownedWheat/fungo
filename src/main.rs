@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use ast::ASTNode;
+use ast::FunctionDefinition;
 use ast::FungoImport;
 use ast::GoImport;
 use ast::Identifier;
@@ -359,8 +360,8 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
 
         let let_stmt = recursive(|ls| {
-            token(TokenKind::Let).ignore_then(
-                token(TokenKind::Mut)
+            token(TokenKind::Let).ignore_then(choice((
+                (token(TokenKind::Mut)
                     .or_not()
                     .map(|x| x.is_some())
                     .then(let_identifier)
@@ -377,18 +378,26 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                             mutable,
                         })
                     })
-                    .or(ident_token
-                        .clone()
-                        .then(
-                            ident_token
-                                .clone()
-                                .repeated()
-                                .or(unit().clone().map(|_| vec![])),
-                        )
-                        .then_ignore(assign())
-                        .then(ls.clone().repeated())
-                        .map(|((name, args), body)| ASTNode::NoOp)),
-            )
+                    .boxed()),
+                (ident_token
+                    .clone()
+                    .then(
+                        ident
+                            .clone()
+                            .repeated()
+                            .or(unit().clone().map(|_| vec![]))
+                            .boxed(),
+                    )
+                    .then(colon().then(type_literal.clone()).or_not())
+                    .then_ignore(assign())
+                    .then(ls.clone().repeated())
+                    .map(|x| {
+                        ASTNode::FunctionDefinition(FunctionDefinition {
+                            name,
+                            arguments: args,
+                        })
+                    })),
+            )))
         })
         .boxed();
 
