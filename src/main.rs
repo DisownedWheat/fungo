@@ -33,8 +33,8 @@ fn main() {
     let _ = parser().parse(tokens);
 }
 
-fn token(kind: TokenKind) -> impl Parser<Token, Token, Error = Simple<Token>> {
-    filter(move |(t, _, _)| t == &kind)
+fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
+    filter(move |(t, _, _)| t == &kind).boxed()
 }
 
 #[derive(Clone, Copy)]
@@ -87,6 +87,14 @@ fn rparen() -> BoxedParser<'static, Token, Token, Simple<Token>> {
     token(TokenKind::RParen).boxed()
 }
 
+fn colon() -> BoxedParser<'static, Token, Token, Simple<Token>> {
+    token(TokenKind::Colon).boxed()
+}
+
+fn assign() -> BoxedParser<'static, Token, Token, Simple<Token>> {
+    token(TokenKind::Assign).boxed()
+}
+
 fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
     let ident = identifier(StrValueType::Identifier)
         .map(|s| {
@@ -101,83 +109,135 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .map(|s| ASTNode::StringLiteral(s))
         .boxed();
 
-    let digit = identifier(StrValueType::Number).map(|s| ASTNode::NumberLiteral(s));
+    let digit = identifier(StrValueType::Number)
+        .map(|s| ASTNode::NumberLiteral(s))
+        .boxed();
+
+    let bool = choice((token(TokenKind::True), token(TokenKind::False)))
+        .map(|(kind, _, _)| match kind {
+            TokenKind::True => true,
+            TokenKind::False => false,
+            _ => panic!(),
+        })
+        .map(|x| ASTNode::BoolLiteral(x))
+        .boxed();
+
     let type_literal = recursive(|t| {
-        (token(TokenKind::Deref)
-            .boxed()
-            .ignore_then(t.clone())
-            .map(|x| Type { pointer: true, ..x }))
-        .or(lbracket()
-            .ignore_then(rbracket())
-            .ignore_then(t.clone())
-            .map(|x: Type| Type { slice: true, ..x }))
-        .or(ident
-            .clone()
-            .then(
-                token(TokenKind::Dot)
-                    .boxed()
-                    .then(ident.clone())
-                    .or_not()
-                    .map(|x| match x {
-                        None => None,
-                        Some((
-                            _,
+        choice((
+            token(TokenKind::Deref)
+                .boxed()
+                .ignore_then(t.clone())
+                .map(|x| Type::Pointer(Box::new(x))),
+            lbracket()
+                .ignore_then(rbracket())
+                .ignore_then(t.clone())
+                .map(|x: Type| Type::Slice(Box::new(x))),
+            ident
+                .clone()
+                .then(
+                    token(TokenKind::Dot)
+                        .boxed()
+                        .ignore_then(ident.clone())
+                        .map(|x| match x {
                             ASTNode::Identifier(IdentifierType::Identifier(
                                 Identifier { value, .. },
                                 _,
-                            )),
-                        )) => Some(Type {
-                            name: value.clone(),
-                            module: None,
-                            pointer: false,
-                            slice: false,
-                        }),
-                        _ => None,
-                    }),
-            )
-            .map(|(a, x)| {
-                log::debug!("{:?}", a);
-                match x {
-                    Some(x) => x,
-                    None => Type {
-                        name: Rc::new("unknown".to_string()),
-                        module: None,
-                        pointer: false,
-                        slice: false,
-                    },
-                }
-            }))
+                            )) => Type::Type {
+                                name: value.clone(),
+                                module: None,
+                            },
+                            _ => panic!(),
+                        })
+                        .or_not(),
+                )
+                .map(|(a, x)| {
+                    log::debug!("INSIDE THE TYPE {:?} ------ {:?}", a, x);
+                    match x {
+                        Some(x) => match x {
+                            Type::Type { name, .. } => Type::Type {
+                                name,
+                                module: a.get_ident_name(),
+                            },
+                            _ => panic!(),
+                        },
+                        None => match a.get_ident_name() {
+                            Some(value) => Type::Type {
+                                name: value.clone(),
+                                module: None,
+                            },
+                            _ => panic!(),
+                        },
+                    }
+                }),
+        ))
     })
-    .map(|x| TypeDef::Type(x));
+    .map(|x| TypeDef::Type(x))
+    .boxed();
 
     let record_definition = recursive(|r| {
-        ident
-            .clone()
-            .then_ignore(token(TokenKind::Colon).boxed())
-            .then(type_literal.clone().or(r.clone()))
-            .separated_by(comma().ignored())
-            .delimited_by(lbrace(), rbrace())
+        lbrace()
+            .ignore_then(
+                ident
+                    .clone()
+                    .then_ignore(colon())
+                    .then(type_literal.clone().or(r.clone()))
+                    .repeated(), // .separated_by(comma().ignored()),
+            )
+            .then_ignore(rbrace())
             .map(|x| RecordDefinition {
                 fields: x
                     .into_iter()
                     .map(|(ident, t_)| match ident {
-                        (ASTNode::Identifier(IdentifierType::Identifier(
+                        ASTNode::Identifier(IdentifierType::Identifier(
                             Identifier { value, .. },
                             _,
-                        )),) => RecordDefinitionField {
+                        )) => RecordDefinitionField {
                             name: value,
-                            type_: t,
+                            type_: t_,
                         },
                         _ => panic!(),
                     })
                     .collect(),
             })
-    });
+            .map(|x| TypeDef::RecordDefinition(x))
+    })
+    .boxed();
+
+    let tuple_definition = recursive(|t| {
+        lparen()
+            .ignore_then(
+                choice((type_literal.clone(), record_definition.clone(), t.clone()))
+                    .separated_by(comma().ignored())
+                    .map(|x| TypeDef::TupleDefinition {
+                        length: x.len(),
+                        types: x,
+                    }),
+            )
+            .then_ignore(rparen())
+    })
+    .boxed();
+
+    let variant_definition = token(TokenKind::Pipe)
+        .ignore_then(
+            ident
+                .clone()
+                .then((token(TokenKind::Of)).then(choice((
+                    record_definition.clone(),
+                    tuple_definition.clone(),
+                    type_literal.clone(),
+                ))))
+                .or_not(),
+        )
+        .boxed();
 
     let type_ = token(TokenKind::TypeKeyword)
         .ignore_then(ident.clone())
-        .then_ignore(token(TokenKind::Assign))
-        .then(choice((type_literal, record_definition)))
+        .then_ignore(assign())
+        .then(choice((
+            record_definition.clone(),
+            tuple_definition.clone(),
+            type_literal.clone(),
+        )))
         .map(|(ident, t_)| match ident {
             ASTNode::Identifier(IdentifierType::Identifier(Identifier { value, .. }, _)) => {
                 ASTNode::TypeDefinition(value.clone(), t_)
@@ -185,9 +245,19 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             _ => panic!(),
         });
 
-    let expr = recursive(|expr| any().map(|_| ASTNode::NoOp));
+    let expr = recursive(|expr| {
+        choice((
+            ident.clone(),
+            digit.clone(),
+            str_.clone(),
+            bool.clone(),
+            token(TokenKind::LParen)
+                .ignore_then(expr.clone())
+                .then_ignore(token(TokenKind::RParen)),
+        ))
+    });
 
-    let stmt = recursive(|stmt| {
+    let stmt = {
         let record_destructure = (ident
             .clone()
             .separated_by(comma())
@@ -233,34 +303,61 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             ASTNode::Identifier(IdentifierType::TupleDestructure(filtered, None))
         });
 
-        let let_identifier = choice((
+        let ident_types = choice((
             ident.clone(),
             record_destructure.clone(),
             array_destructure.clone(),
             tuple_destructure.clone(),
         ))
-        .then(token(TokenKind::Colon).or_not().map(|x| x.is_some()));
+        .boxed();
+
+        let typed_ident = lparen()
+            .ignore_then(ident_types.clone())
+            .then_ignore(token(TokenKind::Colon).boxed())
+            .then(type_literal.clone())
+            .then_ignore(rparen())
+            .map(|(node, def)| match node {
+                ASTNode::Identifier(ident) => match (ident, def) {
+                    (IdentifierType::Identifier(n, _), TypeDef::Type(t)) => {
+                        ASTNode::Identifier(IdentifierType::Identifier(n, Some(t)))
+                    }
+                    (IdentifierType::RecordDestructure(n, _), TypeDef::Type(t)) => {
+                        ASTNode::Identifier(IdentifierType::RecordDestructure(n, Some(t)))
+                    }
+                    (IdentifierType::ArrayDestructure(n, _), TypeDef::Type(t)) => {
+                        ASTNode::Identifier(IdentifierType::ArrayDestructure(n, Some(t)))
+                    }
+                    (IdentifierType::TupleDestructure(n, _), TypeDef::Type(t)) => {
+                        ASTNode::Identifier(IdentifierType::TupleDestructure(n, Some(t)))
+                    }
+                    (x @ IdentifierType::Bucket, _) => ASTNode::Identifier(x),
+                    _ => panic!(),
+                },
+
+                _ => panic!(),
+            })
+            .boxed();
+
+        let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
 
         let let_stmt = token(TokenKind::Let)
             .ignore_then(token(TokenKind::Mut).or_not().map(|x| x.is_some()))
             .then(let_identifier)
             .then_ignore(token(TokenKind::Assign))
             .then(expr.clone())
-            .map(
-                |((mutable, (name, _)), rhs): ((bool, (ASTNode, bool)), ASTNode)| {
-                    let identifier = match name {
-                        ASTNode::Identifier(n) => n,
-                        _ => panic!(),
-                    };
-                    ASTNode::LetExpression(LetExpression {
-                        identifier,
-                        value: Box::new(rhs),
-                        mutable,
-                    })
-                },
-            );
-        let_stmt.or(type_).or(expr.clone())
-    });
+            .map(|((mutable, name), value)| {
+                let identifier = match name {
+                    ASTNode::Identifier(n) => n,
+                    _ => panic!(),
+                };
+                ASTNode::LetExpression(LetExpression {
+                    identifier,
+                    value: Box::new(value),
+                    mutable,
+                })
+            });
+        let_stmt.or(type_.clone()).or(expr.clone())
+    };
 
     let import = token(TokenKind::Import).boxed();
 
@@ -282,20 +379,22 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
     let token = choice((
         go_import,
         fungo_import,
+        // record_definition.map(|x| ASTNode::TypeDefinition(Rc::new("ASER".to_string()), x)),
         stmt,
-        str_,
-        digit,
-        ident,
-        expr.clone(),
-    ));
+    ))
+    .boxed();
 
     token
-        // .recover_with(skip_then_retry_until([any().ignored(), end()]))
         .repeated()
+        // .recover_with(skip_then_retry_until([any().ignored(), end()]))
+        .map_err(|x| {
+            log::debug!("{:?}", x);
+            x
+        })
         .map(|tokens| {
-            let mut tokens = tokens.into_iter();
+            // let mut tokens = tokens.into_iter();
             let mut exprs = vec![];
-            while let Some(token) = tokens.next() {
+            for token in tokens {
                 println!("{:?}", token);
                 exprs.push(token);
                 // match token {

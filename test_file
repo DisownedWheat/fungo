@@ -3,12 +3,16 @@ let mutable text = 1
 
 type TestRecord = {
 	TestVal: []*int
-	mutable AnotherTest: string
+	AnotherTest: {
+		InteriorTest: string
+	}
 }
+
+type TestTuple = (int, string, TestRecord)
 
 type TestADT =
 	| Test
-	| Testing(string)
+	| Testing of string
 
 let getValue (&t: *TestRecord) = t.testVal
 
