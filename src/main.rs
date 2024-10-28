@@ -380,10 +380,11 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 .boxed();
             let func = {
                 let exprs = choice((
-                    ls.clone().map(|x| vec![x]),
+                    ls.clone().map(|x| vec![x]).boxed(),
                     lparen()
                         .ignore_then(ls.clone().repeated())
-                        .then_ignore(rparen()),
+                        .then_ignore(rparen())
+                        .boxed(),
                 ))
                 .boxed();
                 let idents = ident_token
@@ -399,9 +400,9 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 let return_type = colon().then(type_literal.clone()).or_not().boxed();
                 idents
                     .then(return_type)
-                    .then_ignore(assign())
+                    .then(assign())
                     .then(exprs)
-                    .map(|x| {
+                    .map(|((((Rc<String>, Vec<ASTNode>), Option<((TokenKind, Range<usize>, Rc<String>), TypeDef)>), (TokenKind, Range<usize>, Rc<String>)), Vec<ASTNode>)| {
                         ASTNode::FunctionDefinition(FunctionDefinition {
                             name,
                             arguments: args,
