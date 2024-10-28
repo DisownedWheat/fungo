@@ -221,13 +221,23 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .ignore_then(
             ident
                 .clone()
-                .then((token(TokenKind::Of)).then(choice((
-                    record_definition.clone(),
-                    tuple_definition.clone(),
-                    type_literal.clone(),
-                ))))
-                .or_not(),
+                .then(
+                    token(TokenKind::Of)
+                        .boxed()
+                        .ignore_then(choice((
+                            record_definition.clone(),
+                            tuple_definition.clone(),
+                            type_literal.clone(),
+                        )))
+                        .or_not(),
+                )
+                .map(|(node, type_)| match node.get_ident_name() {
+                    Some(value) => (value, type_),
+                    None => panic!(),
+                }),
         )
+        .repeated()
+        .map(|x| TypeDef::VariantDefinition { fields: x })
         .boxed();
 
     let type_ = token(TokenKind::TypeKeyword)
@@ -236,6 +246,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .then(choice((
             record_definition.clone(),
             tuple_definition.clone(),
+            variant_definition.clone(),
             type_literal.clone(),
         )))
         .map(|(ident, t_)| match ident {

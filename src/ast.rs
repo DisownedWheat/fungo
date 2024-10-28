@@ -64,9 +64,14 @@ pub enum Type {
 #[derive(Debug)]
 pub enum TypeDef {
     Type(Type),
-    EnumDefinition(EnumDefiniton),
+    VariantDefinition {
+        fields: Vec<(ASTString, Option<TypeDef>)>,
+    },
     RecordDefinition(RecordDefinition),
-    TupleDefinition { length: usize, types: Vec<TypeDef> },
+    TupleDefinition {
+        length: usize,
+        types: Vec<TypeDef>,
+    },
 }
 
 // Records
