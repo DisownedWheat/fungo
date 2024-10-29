@@ -4,16 +4,7 @@ use ariadne::Label;
 use ariadne::Report;
 use ariadne::ReportKind;
 use ariadne::Source;
-use ast::ASTNode;
-use ast::FunctionDefinition;
-use ast::FungoImport;
-use ast::GoImport;
-use ast::IdentifierType;
-use ast::LetExpression;
-use ast::RecordDefinition;
-use ast::RecordDefinitionField;
-use ast::Type;
-use ast::TypeDef;
+use ast::*;
 use chumsky::prelude::*;
 use lexer::{Token, TokenKind};
 use std::cmp;
@@ -174,6 +165,22 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
     .boxed();
 
     let ident = choice((
+        (pointer()
+            .then(ident_token)
+            .then(
+                recursive(|i| {
+                    token(TokenKind::Dot)
+                        .boxed()
+                        .ignore_then(ident_token.clone())
+                        .then_with(i.or_not())
+                })
+                .repeated(),
+            )
+            .map(|x| Accessor::Property(value, next))
+            .boxed()
+            .map(|x| {})
+            .labelled("Accessor")
+            .boxed()),
         (pointer().then(ident_token.clone()).map(|(is_pointer, s)| {
             if is_pointer {
                 IdentifierType::Pointer(s.clone(), None)
@@ -344,7 +351,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
         let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
 
-        let let_stmt = recursive(|ls| {
+        let let_stmt = ({
             let val = token(TokenKind::Mut)
                 .or_not()
                 .map(|x| x.is_some())

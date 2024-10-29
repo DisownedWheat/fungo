@@ -26,15 +26,16 @@ pub struct Identifier {
 }
 
 #[derive(Debug)]
-pub struct Accessor {
-    pub left: Box<ASTNode>,
-    pub right: ASTString,
+pub enum Accessor {
+    Property(ASTString, Option<ASTString>),
+    Index(ASTString, Box<ASTNode>),
 }
 
 #[derive(Debug)]
 pub enum IdentifierType {
     Identifier(ASTString, Option<Type>),
     Pointer(ASTString, Option<Type>),
+    Accssor(Accessor, Option<Type>),
     ArrayDestructure(Vec<IdentifierType>, Option<Type>),
     RecordDestructure(Vec<IdentifierType>, Option<Type>),
     TupleDestructure(Vec<IdentifierType>, Option<Type>),
