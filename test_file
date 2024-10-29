@@ -1,5 +1,6 @@
 open "fmt"
-let mutable text = 1
+open Test
+let text = 1
 
 type TestRecord = {
 	TestVal: []*int

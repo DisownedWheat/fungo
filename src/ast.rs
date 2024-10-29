@@ -34,6 +34,7 @@ pub struct Accessor {
 #[derive(Debug)]
 pub enum IdentifierType {
     Identifier(ASTString, Option<Type>),
+    Pointer(ASTString, Option<Type>),
     ArrayDestructure(Vec<IdentifierType>, Option<Type>),
     RecordDestructure(Vec<IdentifierType>, Option<Type>),
     TupleDestructure(Vec<IdentifierType>, Option<Type>),
