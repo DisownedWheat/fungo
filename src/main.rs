@@ -288,7 +288,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         ))
     });
 
-    let stmt = {
+    let stmt = recursive(|stmt| {
         let record_destructure = (ident
             .clone()
             .separated_by(comma())
@@ -365,9 +365,9 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 .boxed();
             let func = {
                 let exprs = choice((
-                    ls.clone().map(|x| vec![x]).boxed(),
+                    expr.clone().map(|x| vec![x]).boxed(),
                     lparen()
-                        .ignore_then(ls.clone().repeated())
+                        .ignore_then(stmt.clone().repeated())
                         .then_ignore(rparen())
                         .boxed(),
                 ))
@@ -412,7 +412,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
         let x = choice((let_stmt, type_.clone(), expr.clone())).boxed();
         x
-    };
+    });
 
     let import = token(TokenKind::Import).boxed();
 
