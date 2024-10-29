@@ -1,5 +1,8 @@
 use std::rc::Rc;
 
+use ariadne::Label;
+use ariadne::Report;
+use ariadne::ReportKind;
 use ariadne::Source;
 use ast::ASTNode;
 use ast::FunctionDefinition;
@@ -11,9 +14,9 @@ use ast::RecordDefinition;
 use ast::RecordDefinitionField;
 use ast::Type;
 use ast::TypeDef;
-use chumsky::error::SimpleReason;
 use chumsky::prelude::*;
 use lexer::{Token, TokenKind};
+use std::cmp;
 mod ast;
 mod lexer;
 
@@ -270,7 +273,8 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             variant_definition.clone(),
             type_literal.clone(),
         )))
-        .map(|(value, t_)| ASTNode::TypeDefinition(value, t_));
+        .map(|(value, t_)| ASTNode::TypeDefinition(value, t_))
+        .boxed();
 
     let expr = recursive(|expr| {
         choice((
@@ -406,45 +410,27 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         })
         .boxed();
 
-        let_stmt
-            .or(type_.clone())
-            .or(expr.clone())
-            .map_err(|x: Simple<Token>| {
-                let span = x.span();
-                let (_, token_span, context) = x.found().unwrap();
-                let report = ariadne::Report::build(
-                    ariadne::ReportKind::Error,
-                    (context, token_span.clone()),
-                )
-                .with_code("E0001")
-                .with_message("unexpected token")
-                .with_label(
-                    ariadne::Label::new((context, token_span.clone()))
-                        .with_message("unexpected token"),
-                )
-                .finish()
-                .print((context, Source::from(include_str!("../test_file"))))
-                .unwrap();
-                log::error!("{:?}", x);
-                x
-            })
-            .boxed()
+        let x = choice((let_stmt, type_.clone(), expr.clone())).boxed();
+        x
     };
 
     let import = token(TokenKind::Import).boxed();
 
-    let go_import = (import.clone().ignore_then(str_.clone())).map(|s| match s {
-        ASTNode::StringLiteral(value) => ASTNode::GoImport(GoImport {
-            module: value,
-            alias: None,
-        }),
-        _ => panic!(),
-    });
+    let go_import = (import.clone().ignore_then(str_.clone()))
+        .map(|s| match s {
+            ASTNode::StringLiteral(value) => ASTNode::GoImport(GoImport {
+                module: value,
+                alias: None,
+            }),
+            _ => panic!(),
+        })
+        .boxed();
 
     let fungo_import = import
         .clone()
         .ignore_then(ident_token.clone())
-        .map(|s| ASTNode::FungoImport(FungoImport { module: s }));
+        .map(|s| ASTNode::FungoImport(FungoImport { module: s }))
+        .boxed();
 
     let token = choice((
         go_import,
@@ -452,17 +438,45 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         // record_definition.map(|x| ASTNode::TypeDefinition(Rc::new("ASER".to_string()), x)),
         stmt,
     ))
+    .map_err(|x| {
+        let (token, range, context) = x.found().unwrap();
+        let expected = x.expected();
+        let mut colors = ariadne::ColorGenerator::new();
+        let a = colors.next();
+        let b = colors.next();
+        let first = range.start;
+        let second = range.end;
+        Report::build(ReportKind::Error, (context.clone(), first..second))
+            .with_code(1)
+            .with_note("Unexpected Token")
+            .with_label(
+                Label::new((context.clone(), range.clone()))
+                    .with_message(format!("Unexpected Token: {:?}", token))
+                    .with_color(a),
+            )
+            .with_label(
+                Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
+                    .with_message(format!(
+                        "expected one of {:?}",
+                        expected.into_iter().map(|x| x).collect::<Vec<_>>()
+                    ))
+                    .with_color(b),
+            )
+            .finish()
+            .print((context.clone(), Source::from(include_str!("../test_file"))))
+            .unwrap();
+        x
+    })
     .boxed();
 
     token
         .repeated()
         // .recover_with(skip_then_retry_until([any().ignored(), end()]))
         .map(|tokens| {
-            let mut tokens = tokens.into_iter();
-            let mut exprs = vec![];
+            let tokens = tokens.into_iter();
             tokens
                 .map(|token| {
-                    println!("{:?}", token);
+                    log::debug!("{:?}", token);
                     token
                     // match token {
                     //     ASTNode::GoImport(value) => {
@@ -480,6 +494,6 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     //     _ => panic!("unexpected token {:?}", token),
                     // }
                 })
-                .collect();
+                .collect()
         })
 }
