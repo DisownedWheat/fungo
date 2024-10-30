@@ -112,7 +112,7 @@ pub enum LexerError {
     FileNotFound,
 }
 
-pub type Token = (TokenKind, Span, Rc<String>);
+pub type Token = (TokenKind, Span, Rc<String>, Rc<String>);
 
 pub fn lex(file_path: &str) -> Result<Vec<Result<Token, ()>>, LexerError> {
     let input = match std::fs::read_to_string(file_path) {
@@ -120,18 +120,25 @@ pub fn lex(file_path: &str) -> Result<Vec<Result<Token, ()>>, LexerError> {
         Err(_) => return Err(LexerError::FileNotFound),
     };
     let counted_file_path = Rc::new(file_path.to_string());
-    let mut lexer = TokenKind::lexer(&input);
-    let mut tokens = Vec::new();
+    let counted_input = Rc::new(input);
+    let mut lexer = TokenKind::lexer(&counted_input);
+    let mut tokens = Vec::with_capacity(counted_input.len() / 10);
     while let Some(token) = lexer.next() {
         let span = lexer.span();
         match token {
-            Ok(x) => tokens.push(Ok((x, span, counted_file_path.clone()))),
+            Ok(x) => tokens.push(Ok((
+                x,
+                span,
+                counted_input.clone(),
+                counted_file_path.clone(),
+            ))),
             Err(_) => tokens.push(Err(())),
         }
     }
     tokens.push(Ok((
         TokenKind::EOF,
         (0 as usize)..(0 as usize),
+        counted_input.clone(),
         counted_file_path,
     )));
     return Ok(tokens);

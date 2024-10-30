@@ -30,7 +30,7 @@ fn main() {
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
-    filter(move |(t, _, _)| t == &kind).boxed()
+    filter(move |(t, _, _, _)| t == &kind).boxed()
 }
 
 #[derive(Clone, Copy)]
@@ -42,14 +42,14 @@ enum StrValueType {
 
 fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, Rc<String>, Simple<Token>> {
     filter_map(
-        move |span, (kind, inner_span, ctx): Token| match (t_, &kind) {
+        move |span, (kind, inner_span, source, ctx): Token| match (t_, &kind) {
             (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s.clone()),
             (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s.clone()),
             (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s.clone()),
             _ => Err(Simple::expected_input_found(
                 span,
                 Vec::new(),
-                Some((kind, inner_span, ctx)),
+                Some((kind, inner_span, source, ctx)),
             )),
         },
     )
@@ -116,7 +116,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .boxed();
 
     let bool = choice((token(TokenKind::True), token(TokenKind::False)))
-        .map(|(kind, _, _)| match kind {
+        .map(|(kind, _, _, _)| match kind {
             TokenKind::True => true,
             TokenKind::False => false,
             _ => panic!(),
@@ -164,50 +164,81 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
     .map(|x| TypeDef::Type(x))
     .boxed();
 
-    let ident = choice((
-        (pointer()
-            .then(ident_token)
-            .then(
-                recursive(|i| {
-                    token(TokenKind::Dot)
-                        .boxed()
-                        .ignore_then(ident_token.clone())
-                        .then_with(i.or_not())
-                })
-                .repeated(),
-            )
-            .map(|x| Accessor::Property(value, next))
-            .boxed()
-            .map(|x| {})
-            .labelled("Accessor")
-            .boxed()),
-        (pointer().then(ident_token.clone()).map(|(is_pointer, s)| {
-            if is_pointer {
-                IdentifierType::Pointer(s.clone(), None)
-            } else {
-                IdentifierType::Identifier(s.clone(), None)
-            }
-        }))
-        .labelled("ident")
-        .boxed(),
-        (lparen()
-            .ignore_then(pointer().then(ident_token.clone()).boxed())
-            .then_ignore(colon().ignored())
-            .then(type_literal.clone())
-            .then_ignore(rparen())
-            .map(|((is_pointer, s), t)| match t {
-                TypeDef::Type(t) => {
-                    if is_pointer {
-                        IdentifierType::Pointer(s.clone(), Some(t))
-                    } else {
-                        IdentifierType::Identifier(s.clone(), Some(t))
-                    }
+    let ident = recursive(|i| {
+        let base_ident = pointer()
+            .then(ident_token.clone())
+            .map(|(is_pointer, s)| {
+                if is_pointer {
+                    IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None)))
+                } else {
+                    IdentifierType::Identifier(s, None)
                 }
-                _ => panic!(),
             })
-            .labelled("typed_ident"))
-        .boxed(),
-    ));
+            .labelled("ident")
+            .boxed();
+
+        let ident = choice((
+            base_ident.clone(),
+            // Regular identifier with optional pointer
+            // Typed identifier with optional pointer
+            lparen()
+                .ignore_then(pointer().then(ident_token.clone()))
+                .then_ignore(colon())
+                .then(type_literal.clone())
+                .then_ignore(rparen())
+                .map(|((is_pointer, s), t)| match t {
+                    TypeDef::Type(t) => {
+                        if is_pointer {
+                            IdentifierType::Pointer(Box::new(IdentifierType::Identifier(
+                                s,
+                                Some(t),
+                            )))
+                        } else {
+                            IdentifierType::Identifier(s, Some(t))
+                        }
+                    }
+                    _ => panic!("Expected type in typed identifier"),
+                })
+                .labelled("typed_ident"),
+        ))
+        .boxed();
+
+        // Property accessor chain
+        let accessor_chain = token(TokenKind::Dot)
+            .ignore_then(base_ident.clone())
+            .then(i.or_not())
+            .map(|(prop, next)| Accessor::Property(prop, next))
+            .repeated()
+            .boxed();
+
+        // Combine base identifier with optional accessor chain
+        ident
+            .clone()
+            .then(accessor_chain)
+            .map(|(base, accessors)| {
+                if accessors.is_empty() {
+                    base
+                } else {
+                    // Convert chain of accessors into nested Accessor types
+                    accessors.into_iter().fold(base, |acc, accessor| {
+                        match acc {
+                            parent @ IdentifierType::Accessor(_, Some(_)) => {
+                                IdentifierType::Accessor(
+                                    Box::new(Accessor::Property(parent, Some(accessor))),
+                                    None,
+                                )
+                            }
+                            IdentifierType::Accessor(prev, None) => {
+                                IdentifierType::Accessor(prev, Some(accessor))
+                            }
+                            x => IdentifierType::Accessor((x), Some(accessor)),
+                        }
+                        IdentifierType::Accessor(Box::new(accessor), None)
+                    })
+                }
+            })
+            .labelled("identifier_with_accessors")
+    });
 
     let ident_node = ident.clone().map(|x| ASTNode::Identifier(x));
 
@@ -446,7 +477,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         stmt,
     ))
     .map_err(|x| {
-        let (token, range, context) = x.found().unwrap();
+        let (token, range, source, context) = x.found().unwrap();
         let expected = x.expected();
         let mut colors = ariadne::ColorGenerator::new();
         let a = colors.next();
@@ -470,7 +501,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     .with_color(b),
             )
             .finish()
-            .print((context.clone(), Source::from(include_str!("../test_file"))))
+            .print((context.clone(), Source::from(source.clone().as_str())))
             .unwrap();
         x
     })
