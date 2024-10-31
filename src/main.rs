@@ -19,10 +19,6 @@ fn main() {
     let tokens = lexer::lex("./test_file")
         .unwrap()
         .into_iter()
-        .map(|x| {
-            log::debug!("{:?}", x);
-            x
-        })
         .filter(|x| x.is_ok())
         .map(|x| x.unwrap())
         .collect::<Vec<_>>();
@@ -319,7 +315,30 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .boxed();
 
     let expr = recursive(|expr| {
+        let array_literal = lbracket()
+            .ignore_then(expr.clone().separated_by(comma()).boxed())
+            .map(|x| ASTNode::ArrayLiteral(x))
+            .then_ignore(rbracket())
+            .boxed();
+        let record_literal = lbrace()
+            .ignore_then(
+                (ident_token.clone())
+                    .then_ignore(assign())
+                    .then(expr.clone())
+                    .separated_by(comma())
+                    .boxed()
+                    .map(|x| ASTNode::RecordLiteral {
+                        fields: x
+                            .into_iter()
+                            .map(|(name, value)| RecordField { name, value })
+                            .collect(),
+                    }),
+            )
+            .then_ignore(rbrace())
+            .boxed();
         choice((
+            array_literal.clone(),
+            record_literal.clone(),
             ident_node.clone(),
             digit.clone(),
             str_.clone(),

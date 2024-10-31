@@ -19,8 +19,8 @@ let getValue (&t: *TestRecord) = t.testVal.additionalVal
 
 let main () = (
 	let record = {
-		TestVal: 1,
-		AnotherTest: "Hello World"
+		TestVal = 1,
+		AnotherTest = "Hello World"
 	}
 
 	|> fn (x) {

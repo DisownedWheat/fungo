@@ -98,11 +98,6 @@ pub struct RecordField {
 }
 
 #[derive(Debug)]
-pub struct RecordLiteral {
-    pub fields: Vec<RecordField>,
-}
-
-#[derive(Debug)]
 pub struct LetExpression {
     pub identifier: IdentifierType,
     pub value: Box<ASTNode>,
@@ -157,7 +152,7 @@ pub enum ASTNode {
     FungoImport(FungoImport),
     Identifier(IdentifierType),
     RecordDefinition(RecordDefinition),
-    RecordLiteral(RecordLiteral),
+    RecordLiteral { fields: Vec<RecordField> },
     LetExpression(LetExpression),
     FunctionDefinition(FunctionDefinition),
     ParenExpression(Option<Box<ASTNode>>),
