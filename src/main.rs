@@ -164,7 +164,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
     .map(|x| TypeDef::Type(x))
     .boxed();
 
-    let ident = recursive(|i| {
+    let ident = {
         let base_ident = pointer()
             .then(ident_token.clone())
             .map(|(is_pointer, s)| {
@@ -204,10 +204,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .boxed();
 
         // Property accessor chain
-        let accessor_chain = token(TokenKind::Dot)
-            .ignore_then(base_ident.clone())
-            .then(i.or_not())
-            .map(|(prop, next)| Accessor::Property(prop, next))
+        let accessor_chain = (token(TokenKind::Dot).ignore_then(ident_token.clone()))
             .repeated()
             .boxed();
 
@@ -220,25 +217,32 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     base
                 } else {
                     // Convert chain of accessors into nested Accessor types
-                    accessors.into_iter().fold(base, |acc, accessor| {
-                        match acc {
-                            parent @ IdentifierType::Accessor(_, Some(_)) => {
-                                IdentifierType::Accessor(
-                                    Box::new(Accessor::Property(parent, Some(accessor))),
-                                    None,
-                                )
+                    let initial = IdentifierType::Accessor {
+                        left: Box::new(base),
+                        right: None,
+                    };
+                    accessors
+                        .into_iter()
+                        .fold(initial, |acc, accessor| match acc {
+                            IdentifierType::Accessor { right, left } => {
+                                if right.is_some() {
+                                    IdentifierType::Accessor {
+                                        left: Box::new(IdentifierType::Accessor { left, right }),
+                                        right: Some(accessor),
+                                    }
+                                } else {
+                                    IdentifierType::Accessor {
+                                        left,
+                                        right: Some(accessor),
+                                    }
+                                }
                             }
-                            IdentifierType::Accessor(prev, None) => {
-                                IdentifierType::Accessor(prev, Some(accessor))
-                            }
-                            x => IdentifierType::Accessor((x), Some(accessor)),
-                        }
-                        IdentifierType::Accessor(Box::new(accessor), None)
-                    })
+                            _ => unreachable!(),
+                        })
                 }
             })
             .labelled("identifier_with_accessors")
-    });
+    };
 
     let ident_node = ident.clone().map(|x| ASTNode::Identifier(x));
 
@@ -413,10 +417,8 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 let idents = ident_token
                     .clone()
                     .then(
-                        ident
-                            .clone()
-                            .repeated()
-                            .or(unit().clone().map(|_| vec![]))
+                        (unit().clone().map(|_| vec![]))
+                            .or(ident.clone().repeated())
                             .boxed(),
                     )
                     .boxed();

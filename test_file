@@ -15,7 +15,7 @@ type TestADT =
 	| Test
 	| Testing of string
 
-let getValue (&t: *TestRecord) = t.testVal
+let getValue (&t: *TestRecord) = t.testVal.additionalVal
 
 let main () = (
 	let record = {
