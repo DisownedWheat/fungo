@@ -23,6 +23,8 @@ let main (): () = (
 		AnotherTest = {InteriorTest = "Hello World"}
 	}
 	print record
+	let x = (1, 2, 3)
+	let y = ({value = record.TestVal})
 	()
 )
 

@@ -325,6 +325,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         let array_literal = (expr.clone().separated_by(comma()).boxed())
             .delimited_by(lbracket(), rbracket())
             .map(|x| ASTNode::ArrayLiteral(x));
+
         let record_literal = (ident_token
             .clone()
             .then_ignore(assign())
@@ -338,10 +339,22 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 .collect(),
         });
 
+        let tuple_literal = ((expr.clone().then_ignore(comma()))
+            .then(expr.clone().separated_by(comma()))
+            .boxed())
+        .delimited_by(lparen(), rparen())
+        .map(|(first, rest): (ASTNode, Vec<ASTNode>)| {
+            let mut v = Vec::with_capacity(rest.len() + 1);
+            v.push(first);
+            v.extend(rest);
+            ASTNode::TupleLiteral(v)
+        });
+
         choice((
             array_literal,
             record_literal,
             ident_node.clone(),
+            tuple_literal,
             digit.clone(),
             str_.clone(),
             unit().map(|_| ASTNode::Identifier(IdentifierType::Unit)),

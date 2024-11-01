@@ -161,6 +161,7 @@ pub enum ASTNode {
     FunctionDefinition(FunctionDefinition),
     ParenExpression(Option<Box<ASTNode>>),
     ArrayLiteral(Vec<ASTNode>),
+    TupleLiteral(Vec<ASTNode>),
     StringLiteral(ASTString),
     NumberLiteral(ASTString),
     BoolLiteral(bool),
