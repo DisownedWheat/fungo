@@ -6,7 +6,9 @@ use ariadne::ReportKind;
 use ariadne::Source;
 use ast::*;
 use chumsky::prelude::*;
+use colored::*;
 use lexer::{Token, TokenKind};
+use serde_json::to_string_pretty;
 use std::cmp;
 mod ast;
 mod lexer;
@@ -15,7 +17,6 @@ fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
-    println!("{}", log::log_enabled!(log::Level::Debug));
     let tokens = lexer::lex("./test_file")
         .unwrap()
         .into_iter()
@@ -36,12 +37,12 @@ enum StrValueType {
     Number,
 }
 
-fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, Rc<String>, Simple<Token>> {
+fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Token>> {
     filter_map(
-        move |span, (kind, inner_span, source, ctx): Token| match (t_, &kind) {
-            (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s.clone()),
-            (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s.clone()),
-            (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s.clone()),
+        move |span, (kind, inner_span, source, ctx): Token| match (t_, kind.clone()) {
+            (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
+            (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
+            (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
             _ => Err(Simple::expected_input_found(
                 span,
                 Vec::new(),
@@ -49,54 +50,59 @@ fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, Rc<String>, Simple
             )),
         },
     )
+    .labelled("Identifier")
     .boxed()
 }
 
 fn comma() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::Comma).labelled("comma").boxed()
+    token(TokenKind::Comma).labelled("Comma").boxed()
 }
 
 fn lbrace() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::LBrace).labelled("lbrace").boxed()
+    token(TokenKind::LBrace).labelled("LBrace").boxed()
 }
 
 fn rbrace() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::RBrace).labelled("rbrace").boxed()
+    token(TokenKind::RBrace).labelled("RBrace").boxed()
 }
 
 fn lbracket() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::LBracket).labelled("lbracket").boxed()
+    token(TokenKind::LBracket).labelled("LBracket").boxed()
 }
 
 fn rbracket() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::RBracket).labelled("rbracket").boxed()
+    token(TokenKind::RBracket).labelled("RBracket").boxed()
 }
 
 fn lparen() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::LParen).labelled("lparen").boxed()
+    token(TokenKind::LParen).labelled("LParen").boxed()
 }
 
 fn rparen() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::RParen).labelled("rparen").boxed()
+    token(TokenKind::RParen).labelled("RParen").boxed()
 }
 
 fn colon() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::Colon).labelled("colon").boxed()
+    token(TokenKind::Colon).labelled("Colon").boxed()
 }
 
-fn assign() -> BoxedParser<'static, Token, Token, Simple<Token>> {
-    token(TokenKind::Assign).labelled("assign").boxed()
+fn assign() -> BoxedParser<'static, Token, (), Simple<Token>> {
+    let x = token(TokenKind::Assign)
+        .labelled("Assign")
+        .ignored()
+        .boxed();
+    x
 }
 
 fn unit<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
-    (lparen().then(rparen())).ignored().labelled("unit").boxed()
+    (lparen().then(rparen())).ignored().labelled("Unit").boxed()
 }
 
 fn pointer<'a>() -> BoxedParser<'a, Token, bool, Simple<Token>> {
     token(TokenKind::Pointer)
         .or_not()
         .map(|x| x.is_some())
-        .labelled("pointer")
+        .labelled("Pointer")
         .boxed()
 }
 
@@ -122,6 +128,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
     let type_literal = recursive(|t| {
         choice((
+            unit().map(|_| Type::Unit),
             token(TokenKind::Deref)
                 .boxed()
                 .ignore_then(t.clone())
@@ -170,7 +177,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     IdentifierType::Identifier(s, None)
                 }
             })
-            .labelled("ident")
+            .labelled("Ident")
             .boxed();
 
         let ident = choice((
@@ -195,7 +202,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     }
                     _ => panic!("Expected type in typed identifier"),
                 })
-                .labelled("typed_ident"),
+                .labelled("Typed_Ident"),
         ))
         .boxed();
 
@@ -237,7 +244,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                         })
                 }
             })
-            .labelled("identifier_with_accessors")
+            .labelled("Identifier_With_Accessors")
     };
 
     let ident_node = ident.clone().map(|x| ASTNode::Identifier(x));
@@ -315,38 +322,35 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .boxed();
 
     let expr = recursive(|expr| {
-        let array_literal = lbracket()
-            .ignore_then(expr.clone().separated_by(comma()).boxed())
-            .map(|x| ASTNode::ArrayLiteral(x))
-            .then_ignore(rbracket())
-            .boxed();
-        let record_literal = lbrace()
-            .ignore_then(
-                (ident_token.clone())
-                    .then_ignore(assign())
-                    .then(expr.clone())
-                    .separated_by(comma())
-                    .boxed()
-                    .map(|x| ASTNode::RecordLiteral {
-                        fields: x
-                            .into_iter()
-                            .map(|(name, value)| RecordField { name, value })
-                            .collect(),
-                    }),
-            )
-            .then_ignore(rbrace())
-            .boxed();
+        let array_literal = (expr.clone().separated_by(comma()).boxed())
+            .delimited_by(lbracket(), rbracket())
+            .map(|x| ASTNode::ArrayLiteral(x));
+        let record_literal = (ident_token
+            .clone()
+            .then_ignore(assign())
+            .then(expr.clone())
+            .separated_by(comma()))
+        .delimited_by(lbrace(), rbrace())
+        .map(|x: Vec<(String, ASTNode)>| ASTNode::RecordLiteral {
+            fields: x
+                .into_iter()
+                .map(|(name, value)| RecordField { name, value })
+                .collect(),
+        });
+
         choice((
-            array_literal.clone(),
-            record_literal.clone(),
+            array_literal,
+            record_literal,
             ident_node.clone(),
             digit.clone(),
             str_.clone(),
+            unit().map(|_| ASTNode::Identifier(IdentifierType::Unit)),
             bool.clone(),
             token(TokenKind::LParen)
                 .ignore_then(expr.clone())
                 .then_ignore(token(TokenKind::RParen)),
         ))
+        .padded_by(token(TokenKind::Comment).or_not().ignored())
     });
 
     let stmt = recursive(|stmt| {
@@ -469,7 +473,9 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         })
         .boxed();
 
-        let x = choice((let_stmt, type_.clone(), expr.clone())).boxed();
+        let x = choice((let_stmt, type_.clone(), expr.clone()))
+            .padded_by(token(TokenKind::Comment).or_not().ignored())
+            .boxed();
         x
     });
 
@@ -491,68 +497,57 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .map(|s| ASTNode::FungoImport(FungoImport { module: s }))
         .boxed();
 
-    let token = choice((
-        go_import,
-        fungo_import,
-        // record_definition.map(|x| ASTNode::TypeDefinition(Rc::new("ASER".to_string()), x)),
-        stmt,
-    ))
-    .map_err(|x| {
-        let (token, range, source, context) = x.found().unwrap();
-        let expected = x.expected();
-        let mut colors = ariadne::ColorGenerator::new();
-        let a = colors.next();
-        let b = colors.next();
-        let first = range.start;
-        let second = range.end;
-        Report::build(ReportKind::Error, (context.clone(), first..second))
-            .with_code(1)
-            .with_note("Unexpected Token")
-            .with_label(
-                Label::new((context.clone(), range.clone()))
-                    .with_message(format!("Unexpected Token: {:?}", token))
-                    .with_color(a),
-            )
-            .with_label(
-                Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
-                    .with_message(format!(
-                        "expected one of {:?}",
-                        expected.into_iter().map(|x| x).collect::<Vec<_>>()
-                    ))
-                    .with_color(b),
-            )
-            .finish()
-            .print((context.clone(), Source::from(source.clone().as_str())))
-            .unwrap();
-        x
-    })
-    .boxed();
-
-    token
+    let token_ast = choice((go_import, fungo_import, stmt))
+        .padded_by(token(TokenKind::Comment).or_not().ignored())
         .repeated()
-        // .recover_with(skip_then_retry_until([any().ignored(), end()]))
-        .map(|tokens| {
-            let tokens = tokens.into_iter();
-            tokens
-                .map(|token| {
-                    log::debug!("{:?}", token);
-                    token
-                    // match token {
-                    //     ASTNode::GoImport(value) => {
-                    //         exprs.push(ASTNode::GoImport(value));
-                    //     }
-                    //     ASTNode::Var(value) => {
-                    //         if let Some(Expr::GoImport(_)) = tokens.next() {
-                    //             exprs.push(Expr::GoImport(value));
-                    //         } else {
-                    //             exprs.push(Expr::Var(value));
-                    //         }
-                    //     }
-                    //     Expr::Ident(value) => exprs.push(Expr::Ident(value)),
-                    //     Expr::FungoImport(value) => exprs.push(Expr::FungoImport(value)),
-                    //     _ => panic!("unexpected token {:?}", token),
-                    // }
-                })
-                .collect()
-        })
+        .then_ignore(token(TokenKind::EOF))
+        .then_ignore(end())
+        .map_err(|x| {
+            let (token, range, source, context) = x.found().unwrap();
+            log::error!("Unexpected token: {:?}", token);
+            let expected = x.expected();
+            let mut colors = ariadne::ColorGenerator::new();
+            let a = colors.next();
+            let b = colors.next();
+            let first = range.start;
+            let second = range.end;
+            Report::build(ReportKind::Error, (context.clone(), first..second))
+                .with_code(1)
+                .with_note("Unexpected Token")
+                .with_label(
+                    Label::new((context.clone(), range.clone()))
+                        .with_message(format!("Unexpected Token: {:?}", token))
+                        .with_color(a),
+                )
+                .with_label(
+                    Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
+                        .with_message(format!(
+                            "expected one of {}",
+                            expected
+                                .into_iter()
+                                .map(|x| match x {
+                                    Some(kind) => format!("{:?}", kind),
+                                    None => "end of input".to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                        .with_color(b),
+                )
+                .finish()
+                .print((context.clone(), Source::from(source.clone().as_str())))
+                .unwrap();
+            x
+        });
+
+    token_ast.map(|tokens| {
+        let tokens = tokens.into_iter();
+        tokens
+            .map(|token| {
+                let pretty = to_string_pretty(&token).unwrap();
+                println!("{}", pretty.cyan());
+                token
+            })
+            .collect()
+    })
 }

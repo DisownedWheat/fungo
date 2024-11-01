@@ -4,14 +4,14 @@ use std::{ops::Range, rc::Rc};
 #[derive(Debug, Logos, PartialEq, Eq, Clone, Hash)]
 #[logos(skip r"[ \t\n\f]+")]
 pub enum TokenKind {
-    #[regex(r"[0-9]+", |lex| Rc::new(lex.slice().to_string()))]
-    NumberLiteral(Rc<String>),
+    #[regex(r"[0-9]+", |lex| (lex.slice().to_string()))]
+    NumberLiteral(String),
     #[token("let")]
     Let,
     #[token("open")]
     Import,
-    #[regex(r#""[^"]*""#, |lex| Rc::new(lex.slice().to_string()))]
-    StringLiteral(Rc<String>),
+    #[regex(r#""[^"]*""#, |lex| (lex.slice().to_string()))]
+    StringLiteral(String),
 
     #[token("of")]
     Of,
@@ -31,8 +31,8 @@ pub enum TokenKind {
     #[regex(r"\+|-|\/|%|\^|<<|>>")]
     Operator,
 
-    #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| Rc::new(lex.slice().to_string()))]
-    Identifier(Rc<String>),
+    #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| (lex.slice().to_string()))]
+    Identifier(String),
 
     // #[regex(r"\r\n")]
     // #[regex(r"\n")]

@@ -2,17 +2,19 @@
 
 use std::rc::Rc;
 
-pub type ASTString = Rc<String>;
+use serde::Serialize;
+
+pub type ASTString = String;
 pub type LogicBlock = Vec<ASTNode>;
 pub type TokenPosition = (usize, usize);
 
 // Imports
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FungoImport {
     pub module: ASTString,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct GoImport {
     pub module: ASTString,
     pub alias: Option<ASTString>,
@@ -20,18 +22,18 @@ pub struct GoImport {
 
 // Identifiers
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Identifier {
     pub value: ASTString,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Accessor {
     left: Box<IdentifierType>,
     right: Option<ASTString>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum IdentifierType {
     Identifier(ASTString, Option<Type>),
     Pointer(Box<IdentifierType>),
@@ -39,6 +41,7 @@ pub enum IdentifierType {
     RecordDestructure(Vec<IdentifierType>, Option<Type>),
     TupleDestructure(Vec<IdentifierType>, Option<Type>),
     Bucket,
+    Unit,
     Accessor {
         left: Box<IdentifierType>,
         right: Option<ASTString>,
@@ -56,8 +59,9 @@ impl IdentifierType {
 
 // Types
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Type {
+    Unit,
     Type {
         name: ASTString,
         module: Option<ASTString>,
@@ -66,7 +70,7 @@ pub enum Type {
     Slice(Box<Type>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum TypeDef {
     Type(Type),
     VariantDefinition {
@@ -80,24 +84,24 @@ pub enum TypeDef {
 }
 
 // Records
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RecordDefinitionField {
     pub name: ASTString,
     pub type_: TypeDef,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RecordDefinition {
     pub fields: Vec<RecordDefinitionField>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RecordField {
     pub name: ASTString,
     pub value: ASTNode,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct LetExpression {
     pub identifier: IdentifierType,
     pub value: Box<ASTNode>,
@@ -105,7 +109,7 @@ pub struct LetExpression {
 }
 
 // Functions
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FunctionDefinition {
     pub name: Option<ASTString>,
     pub arguments: Vec<IdentifierType>,
@@ -113,37 +117,37 @@ pub struct FunctionDefinition {
     pub body: LogicBlock,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Tuple {
     length: usize,
     values: Vec<Type>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct EnumDefiniton {
     pub fields: Vec<(ASTString, Option<Type>)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum TopLevel {
     FunctionDefinition(FunctionDefinition),
     StructMethodDefinition(ASTString, FunctionDefinition),
     TopLevelTypeDef(ASTString, TypeDef),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PipeRight {
     pub left: Box<ASTNode>,
     pub right: Box<ASTNode>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Assign {
     pub left: Box<ASTNode>,
     pub right: Box<ASTNode>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ASTNode {
     Bucket,
     Root(Vec<ASTNode>),
@@ -301,5 +305,25 @@ impl ASTNode {
 impl Default for ASTNode {
     fn default() -> Self {
         ASTNode::NoOp
+    }
+}
+
+fn serialize_rc_string<S>(rc_str: &Rc<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(rc_str)
+}
+
+fn serialize_option_rc_string<S>(
+    rc_str: &Option<Rc<String>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match rc_str {
+        Some(s) => serialize_rc_string(s, serializer),
+        None => serializer.serialize_none(),
     }
 }

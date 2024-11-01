@@ -17,12 +17,18 @@ type TestADT =
 
 let getValue (&t: *TestRecord) = t.testVal.additionalVal
 
-let main (): () = (
-	let ( record: TestRecord ) = {
+let main () = (
+	// This is a comment
+	let record = {
 		TestVal = 1,
-		AnotherTest = {InteriorTest = "Hello World"}
+		AnotherTest = "Hello World"
 	}
-	print record
+
+	|> fn (x) {
+		x.AnotherTest = "Hello Again"
+		x
+	}
+	|> fmt.Println
 	()
 )
 
