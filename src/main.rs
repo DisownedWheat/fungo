@@ -502,52 +502,54 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .repeated()
         .then_ignore(token(TokenKind::EOF))
         .then_ignore(end())
-        .map_err(|x| {
-            let (token, range, source, context) = x.found().unwrap();
-            log::error!("Unexpected token: {:?}", token);
-            let expected = x.expected();
-            let mut colors = ariadne::ColorGenerator::new();
-            let a = colors.next();
-            let b = colors.next();
-            let first = range.start;
-            let second = range.end;
-            Report::build(ReportKind::Error, (context.clone(), first..second))
-                .with_code(1)
-                .with_note("Unexpected Token")
-                .with_label(
-                    Label::new((context.clone(), range.clone()))
-                        .with_message(format!("Unexpected Token: {:?}", token))
-                        .with_color(a),
-                )
-                .with_label(
-                    Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
-                        .with_message(format!(
-                            "expected one of {}",
-                            expected
-                                .into_iter()
-                                .map(|x| match x {
-                                    Some(kind) => format!("{:?}", kind),
-                                    None => "end of input".to_string(),
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ))
-                        .with_color(b),
-                )
-                .finish()
-                .print((context.clone(), Source::from(source.clone().as_str())))
-                .unwrap();
-            x
-        });
+        .boxed()
+        .map_err(error_report)
+        .boxed();
 
-    token_ast.map(|tokens| {
-        let tokens = tokens.into_iter();
-        tokens
-            .map(|token| {
-                let pretty = to_string_pretty(&token).unwrap();
-                println!("{}", pretty.cyan());
-                token
-            })
-            .collect()
+    token_ast.map(|x| {
+        let pretty = to_string_pretty(&x).unwrap();
+        println!("{}", pretty.cyan());
+        x
     })
+}
+
+fn error_report(err: Simple<Token>) -> Simple<Token> {
+    let (token, range, source, context) = err.found().unwrap();
+    let reason = err.reason();
+    let expected = err.expected();
+    log::error!("Unexpected token: {:?}", token);
+    log::error!("Reason: {:?}", reason);
+
+    let mut colors = ariadne::ColorGenerator::new();
+    let a = colors.next();
+    let b = colors.next();
+    let first = range.start;
+    let second = range.end;
+    Report::build(ReportKind::Error, (context.clone(), first..second))
+        .with_code(1)
+        .with_note("Unexpected Token")
+        .with_label(
+            Label::new((context.clone(), range.clone()))
+                .with_message(format!("Unexpected Token: {:?}", token))
+                .with_color(a),
+        )
+        .with_label(
+            Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
+                .with_message(format!(
+                    "expected one of {}",
+                    expected
+                        .into_iter()
+                        .map(|x| match x {
+                            Some(kind) => format!("{:?}", kind),
+                            None => "end of input".to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+                .with_color(b),
+        )
+        .finish()
+        .print((context.clone(), Source::from(source.clone().as_str())))
+        .unwrap();
+    err
 }
