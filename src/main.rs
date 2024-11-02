@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use ariadne::Label;
 use ariadne::Report;
 use ariadne::ReportKind;
@@ -23,7 +21,7 @@ fn main() {
         .filter(|x| x.is_ok())
         .map(|x| x.unwrap())
         .collect::<Vec<_>>();
-    let _ = parser().parse(tokens);
+    let _ = parser().parse_recovery(tokens);
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
@@ -107,14 +105,18 @@ fn pointer<'a>() -> BoxedParser<'a, Token, bool, Simple<Token>> {
 }
 
 fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
-    let ident_token = identifier(StrValueType::Identifier);
+    let ident_token = identifier(StrValueType::Identifier)
+        .labelled("Ident token")
+        .boxed();
 
     let str_ = identifier(StrValueType::String)
         .map(|s| ASTNode::StringLiteral(s))
+        .labelled("String Literal")
         .boxed();
 
     let digit = identifier(StrValueType::Number)
         .map(|s| ASTNode::NumberLiteral(s))
+        .labelled("Number Literal")
         .boxed();
 
     let bool = choice((token(TokenKind::True), token(TokenKind::False)))
@@ -124,6 +126,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             _ => panic!(),
         })
         .map(|x| ASTNode::BoolLiteral(x))
+        .labelled("Bool Literal")
         .boxed();
 
     let type_literal = recursive(|t| {
@@ -165,6 +168,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         ))
     })
     .map(|x| TypeDef::Type(x))
+    .labelled("Type Literal")
     .boxed();
 
     let ident = {
@@ -209,6 +213,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         // Property accessor chain
         let accessor_chain = (token(TokenKind::Dot).ignore_then(ident_token.clone()))
             .repeated()
+            .labelled("Accessor Chain")
             .boxed();
 
         // Combine base identifier with optional accessor chain
@@ -245,9 +250,14 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                 }
             })
             .labelled("Identifier_With_Accessors")
+            .boxed()
     };
 
-    let ident_node = ident.clone().map(|x| ASTNode::Identifier(x));
+    let ident_node = ident
+        .clone()
+        .map(|x| ASTNode::Identifier(x))
+        .labelled("Base Ident")
+        .boxed();
 
     let record_definition = recursive(|r| {
         lbrace()
@@ -272,6 +282,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     .collect(),
             })
             .map(|x| TypeDef::RecordDefinition(x))
+            .labelled("Record Definition")
     })
     .boxed();
 
@@ -286,6 +297,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                     }),
             )
             .then_ignore(rparen())
+            .labelled("Tuple Definition")
     })
     .boxed();
 
@@ -307,6 +319,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         )
         .repeated()
         .map(|x| TypeDef::VariantDefinition { fields: x })
+        .labelled("Variant Definition")
         .boxed();
 
     let type_ = token(TokenKind::TypeKeyword)
@@ -319,12 +332,14 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             type_literal.clone(),
         )))
         .map(|(value, t_)| ASTNode::TypeDefinition(value, t_))
+        .labelled("Type Definition")
         .boxed();
 
     let expr = recursive(|expr| {
         let array_literal = (expr.clone().separated_by(comma()).boxed())
             .delimited_by(lbracket(), rbracket())
-            .map(|x| ASTNode::ArrayLiteral(x));
+            .map(|x| ASTNode::ArrayLiteral(x))
+            .labelled("Array Literal");
 
         let record_literal = (ident_token
             .clone()
@@ -332,28 +347,45 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .then(expr.clone())
             .separated_by(comma()))
         .delimited_by(lbrace(), rbrace())
+        .map(|x| {
+            log::info!("Record Literal: {:?}", x);
+            x
+        })
         .map(|x: Vec<(String, ASTNode)>| ASTNode::RecordLiteral {
             fields: x
                 .into_iter()
                 .map(|(name, value)| RecordField { name, value })
                 .collect(),
-        });
+        })
+        .labelled("Record Literal");
 
         let tuple_literal = ((expr.clone().then_ignore(comma()))
             .then(expr.clone().separated_by(comma()))
             .boxed())
         .delimited_by(lparen(), rparen())
+        .map(|x| {
+            log::info!("TupleLiteral: {:?}", x);
+            x
+        })
         .map(|(first, rest): (ASTNode, Vec<ASTNode>)| {
             let mut v = Vec::with_capacity(rest.len() + 1);
             v.push(first);
             v.extend(rest);
             ASTNode::TupleLiteral(v)
-        });
+        })
+        .labelled("Tuple Literal");
+
+        let func_call = (ident_token.clone().then(expr.clone().repeated()).boxed())
+            .map(|x| {
+                log::info!("Func Call: {:?}", x);
+                x
+            })
+            .map(|(name, arguments)| ASTNode::FunctionCall { name, arguments })
+            .labelled("Function Call");
 
         choice((
             array_literal,
             record_literal,
-            ident_node.clone(),
             tuple_literal,
             digit.clone(),
             str_.clone(),
@@ -362,7 +394,10 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             token(TokenKind::LParen)
                 .ignore_then(expr.clone())
                 .then_ignore(token(TokenKind::RParen)),
+            func_call,
+            ident_node.clone(),
         ))
+        .labelled("Expression")
         .padded_by(token(TokenKind::Comment).or_not().ignored())
     });
 
@@ -371,19 +406,22 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .clone()
             .separated_by(comma())
             .delimited_by(lbrace(), rbrace()))
-        .map(|s| ASTNode::Identifier(IdentifierType::RecordDestructure(s, None)));
+        .map(|s| ASTNode::Identifier(IdentifierType::RecordDestructure(s, None)))
+        .labelled("Record Destructure");
 
         let array_destructure = (ident
             .clone()
             .separated_by(comma())
             .delimited_by(lbracket(), rbracket()))
-        .map(|s| ASTNode::Identifier(IdentifierType::ArrayDestructure(s, None)));
+        .map(|s| ASTNode::Identifier(IdentifierType::ArrayDestructure(s, None)))
+        .labelled("Array Destructure");
 
         let tuple_destructure = (ident
             .clone()
             .separated_by(comma())
             .delimited_by(lparen(), rparen()))
-        .map(|s| ASTNode::Identifier(IdentifierType::TupleDestructure(s, None)));
+        .map(|s| ASTNode::Identifier(IdentifierType::TupleDestructure(s, None)))
+        .labelled("Tuple Destructure");
 
         let ident_types = choice((
             ident_node.clone(),
@@ -391,6 +429,10 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             array_destructure.clone(),
             tuple_destructure.clone(),
         ))
+        .map(|x| {
+            log::info!("Ident Types: {:?}", x);
+            x
+        })
         .boxed();
 
         let typed_ident = lparen()
@@ -398,6 +440,10 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .then_ignore(token(TokenKind::Colon).boxed())
             .then(type_literal.clone())
             .then_ignore(rparen())
+            .map(|x| {
+                log::info!("Typed Ident: {:?}", x);
+                x
+            })
             .map(|(node, def)| match node {
                 ASTNode::Identifier(ident) => match (ident, def) {
                     (IdentifierType::Identifier(n, _), TypeDef::Type(t)) => {
@@ -418,6 +464,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
                 _ => panic!(),
             })
+            .labelled("Typed Ident")
             .boxed();
 
         let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
@@ -440,6 +487,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                         mutable,
                     })
                 })
+                .labelled("Let value")
                 .boxed();
             let func = {
                 let exprs = choice((
@@ -449,6 +497,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                         .then_ignore(rparen())
                         .boxed(),
                 ))
+                .labelled("Function Body")
                 .boxed();
                 let idents = ident_token
                     .clone()
@@ -457,11 +506,13 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                             .or(ident.clone().repeated())
                             .boxed(),
                     )
+                    .labelled("Function Arguments")
                     .boxed();
                 let return_type = colon()
                     .ignored()
                     .then(type_literal.clone())
                     .or_not()
+                    .labelled("Return Type")
                     .boxed();
                 idents
                     .then(return_type)
@@ -481,13 +532,26 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                             body,
                         })
                     })
+                    .labelled("Function")
             };
-            token(TokenKind::Let).ignore_then(choice((val, func)))
+            token(TokenKind::Let)
+                .map(|x| {
+                    log::info!("Let Statement?: {:?}", x);
+                    x
+                })
+                .ignore_then(choice((val, func)))
         })
+        .labelled("Let Stmt")
         .boxed();
 
         let x = choice((let_stmt, type_.clone(), expr.clone()))
+            .map(|x| {
+                log::info!("Big Ol let stmt?: {:?}", x);
+                x
+            })
+            .map_err(error_report)
             .padded_by(token(TokenKind::Comment).or_not().ignored())
+            .labelled("Statement")
             .boxed();
         x
     });
@@ -528,10 +592,10 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
 fn error_report(err: Simple<Token>) -> Simple<Token> {
     let (token, range, source, context) = err.found().unwrap();
-    let reason = err.reason();
-    let expected = err.expected();
+    // let reason = err.reason();
+    let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
     log::error!("Unexpected token: {:?}", token);
-    log::error!("Reason: {:?}", reason);
+    log::error!("Reason: {:?}", expected);
 
     let mut colors = ariadne::ColorGenerator::new();
     let a = colors.next();

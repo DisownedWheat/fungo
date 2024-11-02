@@ -156,9 +156,15 @@ pub enum ASTNode {
     FungoImport(FungoImport),
     Identifier(IdentifierType),
     RecordDefinition(RecordDefinition),
-    RecordLiteral { fields: Vec<RecordField> },
+    RecordLiteral {
+        fields: Vec<RecordField>,
+    },
     LetExpression(LetExpression),
     FunctionDefinition(FunctionDefinition),
+    FunctionCall {
+        name: ASTString,
+        arguments: Vec<ASTNode>,
+    },
     ParenExpression(Option<Box<ASTNode>>),
     ArrayLiteral(Vec<ASTNode>),
     TupleLiteral(Vec<ASTNode>),
