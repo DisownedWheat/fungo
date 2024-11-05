@@ -11,21 +11,31 @@ use std::cmp;
 mod ast;
 mod lexer;
 
+fn print_tokens(tokens: &[Token]) {
+    tokens.iter().for_each(|x| match &x.kind {
+        TokenKind::Block(tokens) => {
+            log::info!("Going inside a block");
+            print_tokens(&tokens);
+            log::info!("Leaving a block");
+        }
+        _ => log::info!("This is the token: {:?}", x.kind),
+    });
+}
+
 fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
-    let tokens = lexer::lex("./test_file")
-        .unwrap()
-        .into_iter()
-        .filter(|x| x.is_ok())
-        .map(|x| x.unwrap())
-        .collect::<Vec<_>>();
-    let _ = parser().parse_recovery(tokens);
+    let tokens = lexer::lex("./test_file").unwrap();
+    tokens.iter().for_each(|x| match &x.kind {
+        TokenKind::Block(tokens) => print_tokens(tokens),
+        _ => log::info!("Not inside block: {:?}", x.kind),
+    })
+    // let _ = parser().parse_recovery(tokens);
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
-    filter(move |(t, _, _, _)| t == &kind).boxed()
+    filter(move |token: &Token| token.kind == kind).boxed()
 }
 
 #[derive(Clone, Copy)]
@@ -36,18 +46,12 @@ enum StrValueType {
 }
 
 fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Token>> {
-    filter_map(
-        move |span, (kind, inner_span, source, ctx): Token| match (t_, kind.clone()) {
-            (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
-            (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
-            (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
-            _ => Err(Simple::expected_input_found(
-                span,
-                Vec::new(),
-                Some((kind, inner_span, source, ctx)),
-            )),
-        },
-    )
+    filter_map(move |span, token: Token| match (t_, token.kind.clone()) {
+        (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
+        (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
+        (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
+        _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
+    })
     .labelled("Identifier")
     .boxed()
 }
@@ -120,7 +124,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .boxed();
 
     let bool = choice((token(TokenKind::True), token(TokenKind::False)))
-        .map(|(kind, _, _, _)| match kind {
+        .map(|Token { kind, .. }| match kind {
             TokenKind::True => true,
             TokenKind::False => false,
             _ => panic!(),
@@ -249,7 +253,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
                         })
                 }
             })
-            .labelled("Identifier_With_Accessors")
+            .labelled("Identifier With Accessors")
             .boxed()
     };
 
@@ -348,7 +352,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .separated_by(comma()))
         .delimited_by(lbrace(), rbrace())
         .map(|x| {
-            log::info!("Record Literal: {:?}", x);
+            // log::info!("Record Literal: {:?}", x);
             x
         })
         .map(|x: Vec<(String, ASTNode)>| ASTNode::RecordLiteral {
@@ -364,7 +368,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .boxed())
         .delimited_by(lparen(), rparen())
         .map(|x| {
-            log::info!("TupleLiteral: {:?}", x);
+            // log::info!("TupleLiteral: {:?}", x);
             x
         })
         .map(|(first, rest): (ASTNode, Vec<ASTNode>)| {
@@ -377,7 +381,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
         let func_call = (ident_token.clone().then(expr.clone().repeated()).boxed())
             .map(|x| {
-                log::info!("Func Call: {:?}", x);
+                // log::info!("Func Call: {:?}", x);
                 x
             })
             .map(|(name, arguments)| ASTNode::FunctionCall { name, arguments })
@@ -389,13 +393,11 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             tuple_literal,
             digit.clone(),
             str_.clone(),
-            unit().map(|_| ASTNode::Identifier(IdentifierType::Unit)),
             bool.clone(),
-            token(TokenKind::LParen)
-                .ignore_then(expr.clone())
-                .then_ignore(token(TokenKind::RParen)),
-            func_call,
+            unit().map(|_| ASTNode::Identifier(IdentifierType::Unit)),
+            // func_call,
             ident_node.clone(),
+            expr.clone().delimited_by(lparen(), rparen()),
         ))
         .labelled("Expression")
         .padded_by(token(TokenKind::Comment).or_not().ignored())
@@ -430,7 +432,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             tuple_destructure.clone(),
         ))
         .map(|x| {
-            log::info!("Ident Types: {:?}", x);
+            // log::info!("Ident Types: {:?}", x);
             x
         })
         .boxed();
@@ -441,7 +443,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .then(type_literal.clone())
             .then_ignore(rparen())
             .map(|x| {
-                log::info!("Typed Ident: {:?}", x);
+                // log::info!("Typed Ident: {:?}", x);
                 x
             })
             .map(|(node, def)| match node {
@@ -536,7 +538,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             };
             token(TokenKind::Let)
                 .map(|x| {
-                    log::info!("Let Statement?: {:?}", x);
+                    // log::info!("Let Statement?: {:?}", x);
                     x
                 })
                 .ignore_then(choice((val, func)))
@@ -546,7 +548,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 
         let x = choice((let_stmt, type_.clone(), expr.clone()))
             .map(|x| {
-                log::info!("Big Ol let stmt?: {:?}", x);
+                // log::info!("Big Ol let stmt?: {:?}", x);
                 x
             })
             .map_err(error_report)
@@ -591,27 +593,33 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
 }
 
 fn error_report(err: Simple<Token>) -> Simple<Token> {
-    let (token, range, source, context) = err.found().unwrap();
+    log::debug!("{:?}", err);
+    let Token {
+        kind,
+        span,
+        source,
+        file,
+    } = err.found().unwrap();
     // let reason = err.reason();
     let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
-    log::error!("Unexpected token: {:?}", token);
+    log::error!("Unexpected token: {:?}", kind);
     log::error!("Reason: {:?}", expected);
 
     let mut colors = ariadne::ColorGenerator::new();
     let a = colors.next();
     let b = colors.next();
-    let first = range.start;
-    let second = range.end;
-    Report::build(ReportKind::Error, (context.clone(), first..second))
+    let first = span.start;
+    let second = span.end;
+    Report::build(ReportKind::Error, (file.clone(), first..second))
         .with_code(1)
         .with_note("Unexpected Token")
         .with_label(
-            Label::new((context.clone(), range.clone()))
-                .with_message(format!("Unexpected Token: {:?}", token))
+            Label::new((file.clone(), span.clone()))
+                .with_message(format!("Unexpected Token: {:?}", kind))
                 .with_color(a),
         )
         .with_label(
-            Label::new((context.clone(), (cmp::max(first - 20, 0)..second + 20)))
+            Label::new((file.clone(), (cmp::max(first - 10, 0)..second + 10)))
                 .with_message(format!(
                     "expected one of {}",
                     expected
@@ -626,7 +634,7 @@ fn error_report(err: Simple<Token>) -> Simple<Token> {
                 .with_color(b),
         )
         .finish()
-        .print((context.clone(), Source::from(source.clone().as_str())))
+        .print((file.clone(), Source::from(source.clone().as_str())))
         .unwrap();
     err
 }
