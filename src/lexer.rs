@@ -110,7 +110,8 @@ pub enum TokenKind {
     #[regex(" ")]
     Space,
 
-    Block(Vec<Token>),
+    Indent,
+    Dedent,
 }
 
 type Span = Range<usize>;
@@ -201,27 +202,11 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
     return Ok(parsed_output);
-    // let output = parsed_output
-    //     .into_iter()
-    //     .next()
-    //     .map(|Token { kind, .. }| {
-    //         if let TokenKind::Block(tokens) = kind {
-    //             tokens
-    //         } else {
-    //             unreachable!()
-    //         }
-    //     })
-    //     .ok_or(LexerError::InvalidParseStep);
-    // match output {
-    //     Ok(x) => Ok(x),
-    //     Err(e) => Err(e),
-    // }
 }
 
 struct WhiteSpaceParser {
     input: Vec<Token>,
-    stack: Vec<Vec<Token>>,
-    current_block: Vec<Token>,
+    output: Vec<Token>,
     current_token: Option<TokenKind>,
     current_indent: usize,
     source: Rc<String>,
@@ -235,8 +220,7 @@ impl WhiteSpaceParser {
     pub fn new(mut input: Vec<Token>, source: Rc<String>, file_name: Rc<String>) -> Self {
         input.reverse();
         Self {
-            stack: Vec::with_capacity(10),
-            current_block: Vec::with_capacity(20),
+            output: Vec::with_capacity(input.len() * 2),
             current_token: None,
             input,
             current_indent: 0,
@@ -244,15 +228,12 @@ impl WhiteSpaceParser {
             file_name,
             span: 0..0,
             end_token_for_block: TokenKind::EOF,
-            end_token_stack: vec![],
+            end_token_stack: Vec::new(),
         }
     }
 
-    fn get_output(mut self) -> Vec<Token> {
-        if self.stack.len() > 0 {
-            self.pop_to_root();
-        }
-        self.current_block
+    fn get_output(self) -> Vec<Token> {
+        self.output
     }
 
     fn push_end_token(&mut self, token: TokenKind) {
@@ -268,30 +249,30 @@ impl WhiteSpaceParser {
         }
     }
 
-    fn push_stack(&mut self) {
-        let tmp = std::mem::take(&mut self.current_block);
-        self.stack.push(tmp);
-        self.current_block = vec![];
+    fn push_indent(&mut self) {
+        let token = Token {
+            kind: TokenKind::Indent,
+            span: self.span.clone(),
+            source: self.source.clone(),
+            file: self.file_name.clone(),
+        };
+        self.output.push(token);
     }
 
-    fn pop_stack(&mut self) {
-        // If the end token is something other than EOF then we're in some kind of literal and this
-        // can be ignored
-        if self.end_token_for_block != TokenKind::EOF {
-            return;
-        }
-        if let Some(mut block) = self.stack.pop() {
-            block.push(self.build_token());
-            self.current_block = block;
-        } else {
-            panic!("Popped empty token stack");
-        }
+    fn push_dedent(&mut self) {
+        let token = Token {
+            kind: TokenKind::Dedent,
+            span: self.span.clone(),
+            source: self.source.clone(),
+            file: self.file_name.clone(),
+        };
+        self.output.push(token);
     }
 
     fn pop_to_root(&mut self) {
-        while let Some(mut block) = self.stack.pop() {
-            block.push(self.build_token());
-            self.current_block = block;
+        while self.current_indent > 0 {
+            self.push_dedent();
+            self.current_indent -= 1;
         }
     }
 
@@ -306,22 +287,11 @@ impl WhiteSpaceParser {
         }
     }
 
-    fn build_token(&mut self) -> Token {
-        let tmp = std::mem::take(&mut self.current_block);
-        self.current_block = vec![];
-        Token {
-            kind: TokenKind::Block(tmp),
-            span: 0..0,
-            source: self.source.clone(),
-            file: self.file_name.clone(),
-        }
-    }
-
     pub fn parse(&mut self) {
         while let Some(current) = self.pop_token() {
             let Token { kind, .. } = &current;
             if kind == &self.end_token_for_block {
-                self.current_block.push(current);
+                self.output.push(current);
                 break;
             }
 
@@ -335,39 +305,39 @@ impl WhiteSpaceParser {
                             &TokenKind::Space => {
                                 let (token, new_indent) = self.parse_spaces();
                                 if new_indent > self.current_indent {
-                                    self.push_stack();
+                                    self.push_indent();
                                     self.current_indent = new_indent;
                                 } else if new_indent < self.current_indent {
-                                    self.pop_stack();
+                                    self.push_dedent();
                                     self.current_indent = new_indent;
                                 }
-                                self.current_block.push(token);
+                                self.output.push(token);
                                 break;
                             }
 
                             &TokenKind::Tab => {
                                 let (token, new_indent) = self.parse_tabs();
                                 if new_indent > self.current_indent {
-                                    self.push_stack();
+                                    self.push_indent();
                                     self.current_indent = new_indent;
                                 } else if new_indent < self.current_indent {
-                                    self.pop_stack();
+                                    self.push_dedent();
                                     self.current_indent = new_indent;
                                 }
-                                self.current_block.push(token);
+                                self.output.push(token);
                                 break;
                             }
 
                             _ => {
                                 self.current_indent = 0;
                                 self.pop_to_root();
-                                self.current_block.push(current);
+                                self.output.push(current);
                                 break;
                             }
                         }
                     }
 
-                    if let Some(x) = self.current_block.last() {
+                    if let Some(x) = self.output.last() {
                         if x.kind == self.end_token_for_block {
                             break;
                         }
@@ -376,7 +346,7 @@ impl WhiteSpaceParser {
                 (&TokenKind::NewLine, false) => continue,
 
                 (&TokenKind::LParen, _) => {
-                    self.current_block.push(current);
+                    self.output.push(current);
                     self.push_end_token(TokenKind::RParen);
                     self.parse();
                     self.pop_end_token();
@@ -384,7 +354,7 @@ impl WhiteSpaceParser {
                 }
 
                 (&TokenKind::LBrace, _) => {
-                    self.current_block.push(current);
+                    self.output.push(current);
                     self.push_end_token(TokenKind::RBrace);
                     self.parse();
                     self.pop_end_token();
@@ -392,7 +362,7 @@ impl WhiteSpaceParser {
                 }
 
                 (&TokenKind::LBracket, _) => {
-                    self.current_block.push(current);
+                    self.output.push(current);
                     self.push_end_token(TokenKind::RBracket);
                     self.parse();
                     self.pop_end_token();
@@ -401,7 +371,7 @@ impl WhiteSpaceParser {
 
                 (&TokenKind::Space, _) | (&TokenKind::Tab, _) => continue,
 
-                _ => self.current_block.push(current),
+                _ => self.output.push(current),
             };
         }
     }

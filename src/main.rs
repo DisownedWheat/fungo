@@ -11,25 +11,19 @@ use std::cmp;
 mod ast;
 mod lexer;
 
-fn print_tokens(tokens: &[Token]) {
-    tokens.iter().for_each(|x| match &x.kind {
-        TokenKind::Block(tokens) => {
-            log::info!("Going inside a block");
-            print_tokens(&tokens);
-            log::info!("Leaving a block");
-        }
-        _ => log::info!("This is the token: {:?}", x.kind),
-    });
-}
-
 fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .init();
     let tokens = lexer::lex("./test_file").unwrap();
-    tokens.iter().for_each(|x| match &x.kind {
-        TokenKind::Block(tokens) => print_tokens(tokens),
-        _ => log::info!("Not inside block: {:?}", x.kind),
+    let mut count = 0;
+    tokens.iter().for_each(move |x| {
+        if x.kind == TokenKind::Indent {
+            count += 1;
+        } else if x.kind == TokenKind::Dedent {
+            count -= 1;
+        }
+        log::info!("Indent: {}, Token:  {:?}", count, x.kind)
     });
     let _ = parser().parse_recovery(tokens);
 }
@@ -53,15 +47,6 @@ fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Tok
         _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
     })
     .labelled("Identifier")
-    .boxed()
-}
-
-fn block() -> BoxedParser<'static, Token, Vec<Token>, Simple<Token>> {
-    filter_map(move |span, token: Token| match token.kind {
-        TokenKind::Block(tokens) => Ok(tokens),
-        _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
-    })
-    .labelled("Indented Block")
     .boxed()
 }
 
@@ -396,13 +381,7 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .map(|(name, arguments)| ASTNode::FunctionCall { name, arguments })
             .labelled("Function Call");
 
-        let block = block().map(|x| {
-            let x = parser().parse(x).unwrap();
-            ASTNode::LogicBlock(x)
-        });
-
         choice((
-            block,
             array_literal,
             record_literal,
             tuple_literal,
