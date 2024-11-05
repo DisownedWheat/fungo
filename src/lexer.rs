@@ -256,13 +256,11 @@ impl WhiteSpaceParser {
     }
 
     fn push_end_token(&mut self, token: TokenKind) {
-        // log::debug!("ENTERING {:?}", token);
         self.end_token_stack.push(self.end_token_for_block.clone());
         self.end_token_for_block = token;
     }
 
     fn pop_end_token(&mut self) {
-        // log::debug!("EXITING {:?}", self.end_token_for_block);
         if let Some(token) = self.end_token_stack.pop() {
             self.end_token_for_block = token;
         } else {
@@ -271,7 +269,6 @@ impl WhiteSpaceParser {
     }
 
     fn push_stack(&mut self) {
-        log::debug!("PUSHING STACK {:?}", self.current_token);
         let tmp = std::mem::take(&mut self.current_block);
         self.stack.push(tmp);
         self.current_block = vec![];
@@ -280,7 +277,6 @@ impl WhiteSpaceParser {
     fn pop_stack(&mut self) {
         // If the end token is something other than EOF then we're in some kind of literal and this
         // can be ignored
-        log::debug!("POPPING STACK {:?}", self.current_token);
         if self.end_token_for_block != TokenKind::EOF {
             return;
         }
@@ -350,13 +346,7 @@ impl WhiteSpaceParser {
                             }
 
                             &TokenKind::Tab => {
-                                log::debug!("Counting tabs {:?}", self.current_token);
                                 let (token, new_indent) = self.parse_tabs();
-                                log::debug!(
-                                    "FINISHED COUNTING TABS: {}, {:?}",
-                                    new_indent,
-                                    token.kind
-                                );
                                 if new_indent > self.current_indent {
                                     self.push_stack();
                                     self.current_indent = new_indent;
@@ -369,7 +359,6 @@ impl WhiteSpaceParser {
                             }
 
                             _ => {
-                                log::debug!("Did newline check, found: {:?}", tok);
                                 self.current_indent = 0;
                                 self.pop_to_root();
                                 self.current_block.push(current);
@@ -418,7 +407,6 @@ impl WhiteSpaceParser {
     }
 
     fn parse_spaces(&mut self) -> (Token, usize) {
-        log::debug!("Counting spaces");
         let mut indent = 1;
         while let Some(current) = self.pop_token() {
             let Token { kind, .. } = &current;
@@ -452,12 +440,6 @@ impl WhiteSpaceParser {
                     continue;
                 }
                 _ => {
-                    log::debug!(
-                        "Current: {} NEW {}, the TOKEN: {:?}",
-                        self.current_indent,
-                        indent,
-                        self.current_token,
-                    );
                     return (current, indent);
                 }
             };
