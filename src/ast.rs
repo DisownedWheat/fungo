@@ -150,7 +150,7 @@ pub struct Assign {
 #[derive(Debug, Serialize)]
 pub enum ASTNode {
     Bucket,
-    Root(Vec<ASTNode>),
+    Root(LogicBlock),
     LogicBlock(LogicBlock),
     GoImport(GoImport),
     FungoImport(FungoImport),

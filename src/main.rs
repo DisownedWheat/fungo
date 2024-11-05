@@ -30,8 +30,8 @@ fn main() {
     tokens.iter().for_each(|x| match &x.kind {
         TokenKind::Block(tokens) => print_tokens(tokens),
         _ => log::info!("Not inside block: {:?}", x.kind),
-    })
-    // let _ = parser().parse_recovery(tokens);
+    });
+    let _ = parser().parse_recovery(tokens);
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
@@ -53,6 +53,15 @@ fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Tok
         _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
     })
     .labelled("Identifier")
+    .boxed()
+}
+
+fn block() -> BoxedParser<'static, Token, Vec<Token>, Simple<Token>> {
+    filter_map(move |span, token: Token| match token.kind {
+        TokenKind::Block(tokens) => Ok(tokens),
+        _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
+    })
+    .labelled("Indented Block")
     .boxed()
 }
 
@@ -387,7 +396,13 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
             .map(|(name, arguments)| ASTNode::FunctionCall { name, arguments })
             .labelled("Function Call");
 
+        let block = block().map(|x| {
+            let x = parser().parse(x).unwrap();
+            ASTNode::LogicBlock(x)
+        });
+
         choice((
+            block,
             array_literal,
             record_literal,
             tuple_literal,
