@@ -17,7 +17,7 @@ type TestADT =
 
 let getValue (&t: *TestRecord) = t.testVal.additionalVal
 
-let main (): () = (
+let main () =
 	let ( record: TestRecord ) = {
 		TestVal = 1,
 		AnotherTest = {InteriorTest = "Hello World"}
@@ -26,7 +26,7 @@ let main (): () = (
 	let x = (1, 2, 3)
 	let y = ({value = record.TestVal})
 	()
-)
+
 
 let test testValue = (
 	testValue.TestVal
