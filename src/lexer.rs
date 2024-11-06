@@ -329,7 +329,6 @@ impl WhiteSpaceParser {
                             }
 
                             _ => {
-                                self.current_indent = 0;
                                 self.pop_to_root();
                                 self.output.push(current);
                                 break;
