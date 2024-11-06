@@ -393,8 +393,14 @@ fn expr<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 .boxed(),
             // func_call,
             ident_node().boxed(),
-            expr.clone()
-                .delimited_by(indent().boxed(), dedent().boxed()),
+            // expr.clone()
+            //     .repeated()
+            //     .delimited_by(lparen().boxed(), rparen().boxed())
+            //     .map(|x| ASTNode::LogicBlock(x)),
+            // indent()
+            //     .ignore_then(expr.clone().repeated())
+            //     .then_ignore(dedent())
+            //     .map(|x| ASTNode::LogicBlock(x)),
             expr.delimited_by(lparen().boxed(), rparen().boxed()),
         ))
         .labelled("Expression")
@@ -497,7 +503,13 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 .map(|x| x.is_some())
                 .then(let_identifier)
                 .then_ignore(assign.clone())
-                .then(expr.clone())
+                .then(choice((
+                    // expr.clone()
+                    //     .repeated()
+                    //     .delimited_by(ident.clone(), dedent.clone())
+                    //     .map(|x| ASTNode::LogicBlock(x)),
+                    expr.clone(),
+                )))
                 .map(|((mutable, name), value)| {
                     let identifier = match name {
                         ASTNode::Identifier(n) => n,
@@ -513,12 +525,10 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 .boxed();
             let func = {
                 let exprs = choice((
-                    expr.clone().map(|x| vec![x]).boxed(),
-                    lparen
-                        .clone()
-                        .ignore_then(stmt.clone().repeated())
-                        .then_ignore(rparen.clone())
+                    (stmt.clone().repeated())
+                        .delimited_by(indent.clone(), dedent.clone())
                         .boxed(),
+                    expr.clone().map(|x| vec![x]).boxed(),
                 ))
                 .map_err(error("Function Expressions"))
                 .labelled("Function Body")
@@ -560,32 +570,19 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                     .labelled("Function")
             };
             token(TokenKind::Let)
-                .map(|x| {
-                    // log::info!("Let Statement?: {:?}", x);
-                    x
-                })
                 .ignore_then(choice((val, func)).map_err(error("Inside Let Statement")))
         })
         .labelled("Let Stmt")
         .boxed();
 
-        choice((
-            let_stmt.clone(),
-            let_stmt.delimited_by(indent, dedent),
-            type_.clone(),
-            expr.clone(),
-        ))
-        .map(|x| {
-            // log::info!("Big Ol let stmt?: {:?}", x);
-            x
-        })
-        .map_err(|x| {
-            log::error!("Inside Statements");
-            error_report(x)
-        })
-        .padded_by(token(TokenKind::Comment).or_not().ignored())
-        .labelled("Statement")
-        .boxed()
+        choice((let_stmt.clone(), type_.clone(), expr.clone()))
+            .map_err(|x| {
+                log::error!("Inside Statements");
+                error_report(x)
+            })
+            .padded_by(token(TokenKind::Comment).or_not().ignored())
+            .labelled("Statement")
+            .boxed()
     })
     .boxed()
 }
