@@ -23,7 +23,7 @@ fn main() {
         } else if x.kind == TokenKind::Dedent {
             count -= 1;
         }
-        log::info!("Indent: {}, Token:  {:?}", count, x.kind)
+        log::info!("Token:  {:?}", x.kind)
     });
     let _ = parser().parse_recovery(tokens);
 }
@@ -521,8 +521,13 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                         .ignore_then(stmt.clone().repeated())
                         .then_ignore(dedent.clone())
                         .boxed(),
+                    expr.clone()
+                        .delimited_by(lparen.clone(), rparen.clone())
+                        .map(|x| vec![x])
+                        .boxed(),
                     expr.clone().map(|x| vec![x]).boxed(),
                 ))
+                .recover_with(skip_parser(expr.clone().map(|x| vec![x])))
                 .map_err(error("Function Expressions"))
                 .labelled("Function Body")
                 .boxed();
@@ -599,20 +604,28 @@ fn fungo_import() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
 }
 
 fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
-    let token_ast = choice((go_import(), fungo_import(), stmt()))
+    let top_level_stmt = choice((go_import(), fungo_import(), stmt()))
         .padded_by(token(TokenKind::Comment).or_not().ignored())
+        .boxed();
+
+    let stmt_or_block = choice((
+        indent()
+            .ignore_then(top_level_stmt.clone().repeated())
+            .then_ignore(dedent()),
+        top_level_stmt.map(|x| vec![x]),
+    ));
+
+    stmt_or_block
         .repeated()
         .then_ignore(token(TokenKind::EOF))
         .then_ignore(end())
         .boxed()
         .map_err(error("Inside regular parser"))
-        .boxed();
-
-    token_ast.map(|x| {
-        let pretty = to_string_pretty(&x).unwrap();
-        println!("{}", pretty.cyan());
-        x
-    })
+        .map(|x| {
+            let pretty = to_string_pretty(&x).unwrap();
+            println!("{}", pretty.cyan());
+            x.into_iter().flatten().collect()
+        })
 }
 
 fn error(msg: &str) -> fn(Simple<Token>) -> Simple<Token> {
@@ -631,6 +644,11 @@ fn error_report(err: Simple<Token>) -> Simple<Token> {
     let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
     log::error!("Unexpected token: {:?}", kind);
     log::error!("Expected: {:?}", expected);
+    log::error!(
+        "Context: {:?}",
+        &source[span.start.saturating_sub(20)..std::cmp::min(span.end + 20, source.len())]
+    );
+    // ... rest of your error reporting code ...
 
     let mut colors = ariadne::ColorGenerator::new();
     let a = colors.next();
@@ -646,7 +664,7 @@ fn error_report(err: Simple<Token>) -> Simple<Token> {
                 .with_color(a),
         )
         .with_label(
-            Label::new((file.clone(), (cmp::max(first - 10, 0)..second + 10)))
+            Label::new((file.clone(), first.saturating_sub(10)..second + 10))
                 .with_message(format!(
                     "expected one of {}",
                     expected
