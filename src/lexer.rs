@@ -35,12 +35,6 @@ pub enum TokenKind {
     #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| (lex.slice().to_string()))]
     Identifier(String),
 
-    // #[regex(r"\r\n")]
-    // #[regex(r"\n")]
-    // NewLine,
-    //
-    // #[regex(r"[ \t\f]")]
-    // Whitespace,
     #[token("=")]
     Assign,
     #[token("{")]

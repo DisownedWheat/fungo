@@ -456,10 +456,6 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             array_destructure,
             tuple_destructure,
         ))
-        .map(|x| {
-            // log::info!("Ident Types: {:?}", x);
-            x
-        })
         .boxed();
 
         let typed_ident = lparen
@@ -468,10 +464,6 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             .then_ignore(token(TokenKind::Colon).boxed())
             .then(type_literal.clone())
             .then_ignore(rparen.clone())
-            .map(|x| {
-                // log::info!("Typed Ident: {:?}", x);
-                x
-            })
             .map(|(node, def)| match node {
                 ASTNode::Identifier(ident) => match (ident, def) {
                     (IdentifierType::Identifier(n, _), TypeDef::Type(t)) => {
