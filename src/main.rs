@@ -481,7 +481,6 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                     (x @ IdentifierType::Bucket, _) => ASTNode::Identifier(x),
                     _ => panic!(),
                 },
-
                 _ => panic!(),
             })
             .labelled("Typed Ident")
@@ -517,14 +516,17 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 .boxed();
             let func = {
                 let exprs = choice((
-                    (stmt.clone().repeated())
-                        .delimited_by(indent.clone(), dedent.clone())
+                    indent
+                        .clone()
+                        .ignore_then(stmt.clone().repeated())
+                        .then_ignore(dedent.clone())
                         .boxed(),
                     expr.clone().map(|x| vec![x]).boxed(),
                 ))
                 .map_err(error("Function Expressions"))
                 .labelled("Function Body")
                 .boxed();
+
                 let idents = ident_token
                     .clone()
                     .then(
@@ -541,6 +543,7 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                     .or_not()
                     .labelled("Return Type")
                     .boxed();
+
                 idents
                     .then(return_type)
                     .then(assign.clone().ignored())
