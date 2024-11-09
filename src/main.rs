@@ -16,16 +16,19 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     let tokens = lexer::lex("./test_file").unwrap();
-    let mut count = 0;
-    tokens.iter().for_each(move |x| {
-        if x.kind == TokenKind::Indent {
-            count += 1;
-        } else if x.kind == TokenKind::Dedent {
-            count -= 1;
+    tokens
+        .iter()
+        .for_each(move |x| log::info!("Token:  {:?}", x.kind));
+    // let _ = parser().parse(tokens); //.parse_recovery(tokens);
+    match parser().parse(tokens) {
+        Ok(ast) => {
+            let pretty = to_string_pretty(&ast).unwrap();
+            println!("{}", pretty.cyan());
         }
-        log::info!("Token:  {:?}", x.kind)
-    });
-    let _ = parser().parse_recovery(tokens);
+        Err(e) => {
+            let _ = e.into_iter().map(error_report);
+        }
+    };
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
@@ -521,13 +524,9 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                         .ignore_then(stmt.clone().repeated())
                         .then_ignore(dedent.clone())
                         .boxed(),
-                    expr.clone()
-                        .delimited_by(lparen.clone(), rparen.clone())
-                        .map(|x| vec![x])
-                        .boxed(),
                     expr.clone().map(|x| vec![x]).boxed(),
                 ))
-                .recover_with(skip_parser(expr.clone().map(|x| vec![x])))
+                // .recover_with(skip_parser(expr.clone().map(|x| vec![x])))
                 .map_err(error("Function Expressions"))
                 .labelled("Function Body")
                 .boxed();
@@ -582,7 +581,6 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             })
             .padded_by(token(TokenKind::Comment).or_not().ignored())
             .labelled("Statement")
-            .boxed()
     })
     .boxed()
 }
@@ -608,24 +606,12 @@ fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
         .padded_by(token(TokenKind::Comment).or_not().ignored())
         .boxed();
 
-    let stmt_or_block = choice((
-        indent()
-            .ignore_then(top_level_stmt.clone().repeated())
-            .then_ignore(dedent()),
-        top_level_stmt.map(|x| vec![x]),
-    ));
-
-    stmt_or_block
+    top_level_stmt
         .repeated()
         .then_ignore(token(TokenKind::EOF))
         .then_ignore(end())
         .boxed()
         .map_err(error("Inside regular parser"))
-        .map(|x| {
-            let pretty = to_string_pretty(&x).unwrap();
-            println!("{}", pretty.cyan());
-            x.into_iter().flatten().collect()
-        })
 }
 
 fn error(msg: &str) -> fn(Simple<Token>) -> Simple<Token> {
@@ -640,15 +626,9 @@ fn error_report(err: Simple<Token>) -> Simple<Token> {
         source,
         file,
     } = err.found().unwrap();
-    // let reason = err.reason();
     let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
     log::error!("Unexpected token: {:?}", kind);
     log::error!("Expected: {:?}", expected);
-    log::error!(
-        "Context: {:?}",
-        &source[span.start.saturating_sub(20)..std::cmp::min(span.end + 20, source.len())]
-    );
-    // ... rest of your error reporting code ...
 
     let mut colors = ariadne::ColorGenerator::new();
     let a = colors.next();
@@ -662,21 +642,6 @@ fn error_report(err: Simple<Token>) -> Simple<Token> {
             Label::new((file.clone(), span.clone()))
                 .with_message(format!("Unexpected Token: {:?}", kind))
                 .with_color(a),
-        )
-        .with_label(
-            Label::new((file.clone(), first.saturating_sub(10)..second + 10))
-                .with_message(format!(
-                    "expected one of {}",
-                    expected
-                        .into_iter()
-                        .map(|x| match x {
-                            Some(kind) => format!("{:?}", kind),
-                            None => "end of input".to_string(),
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-                .with_color(b),
         )
         .finish()
         .print((file.clone(), Source::from(source.clone().as_str())))
