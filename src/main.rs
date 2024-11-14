@@ -397,13 +397,38 @@ fn expr<'a>(
             .boxed();
 
         log::trace!("Paren Expression");
-        let paren_expression = lparen().ignore_then(expr.clone()).then_ignore(rparen());
+        let paren_expression = lparen()
+            .ignore_then(expr.clone())
+            .then_ignore(rparen())
+            .boxed();
 
         log::trace!("Expr Choice");
+        let accessor_idents = choice((
+            array_literal.clone().boxed(),
+            record_literal.clone().boxed(),
+            tuple_literal.clone().boxed(),
+            ident_node().boxed(),
+            paren_expression.clone(),
+        ));
+        let accessor = accessor_idents
+            .clone()
+            .then((token(TokenKind::Dot).boxed().ignore_then(accessor_idents)).repeated())
+            .map(|(first, rest)| {
+                let mut v = Vec::with_capacity(rest.len() + 1);
+                v.push(first);
+                v.extend(rest);
+                v.reverse();
+                let first = v.pop().unwrap();
+                v.into_iter().fold(first, |acc, x| Expr::Accessor {
+                    left: Box::new(x),
+                    right: Box::new(acc),
+                })
+            });
         choice((
             array_literal.boxed(),
             record_literal.boxed(),
             tuple_literal.boxed(),
+            accessor.boxed(),
             digit().boxed(),
             str_().boxed(),
             bool().boxed(),
