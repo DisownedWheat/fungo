@@ -7,7 +7,6 @@ use chumsky::prelude::*;
 use colored::*;
 use lexer::{Token, TokenKind};
 use serde_json::to_string_pretty;
-use std::cmp;
 mod ast;
 mod lexer;
 
@@ -16,19 +15,18 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     let tokens = lexer::lex("./test_file").unwrap();
-    tokens
-        .iter()
-        .for_each(move |x| log::info!("Token:  {:?}", x.kind));
-    // let _ = parser().parse(tokens); //.parse_recovery(tokens);
+    log::debug!("Got the tokens");
     match parser().parse(tokens) {
         Ok(ast) => {
             let pretty = to_string_pretty(&ast).unwrap();
             println!("{}", pretty.cyan());
         }
         Err(e) => {
-            let _ = e.into_iter().map(error_report);
+            e.into_iter().for_each(|e| {
+                error_report(e);
+            });
         }
-    };
+    }
 }
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
@@ -116,31 +114,33 @@ fn ident_token() -> impl Parser<Token, String, Error = Simple<Token>> {
     identifier(StrValueType::Identifier).labelled("Ident token")
 }
 
-fn str_() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
+fn str_() -> impl Parser<Token, Expr, Error = Simple<Token>> {
     identifier(StrValueType::String)
-        .map(|s| ASTNode::StringLiteral(s))
+        .map(|s| Expr::StringLiteral(s))
         .labelled("String Literal")
 }
 
-fn digit() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
+fn digit() -> impl Parser<Token, Expr, Error = Simple<Token>> {
     identifier(StrValueType::Number)
-        .map(|s| ASTNode::NumberLiteral(s))
+        .map(|s| Expr::IntLiteral(s))
         .labelled("Number Literal")
 }
 
-fn bool() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
+fn bool() -> impl Parser<Token, Expr, Error = Simple<Token>> {
     choice((token(TokenKind::True), token(TokenKind::False)))
         .map(|Token { kind, .. }| match kind {
             TokenKind::True => true,
             TokenKind::False => false,
             _ => panic!(),
         })
-        .map(|x| ASTNode::BoolLiteral(x))
+        .map(|x| Expr::BoolLiteral(x))
         .labelled("Bool Literal")
 }
 
 fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    recursive(|t| {
+    log::trace!("Building type_literal parser");
+    let t = recursive(move |t| {
+        log::trace!("Moving into Type Literal");
         choice((
             unit().map(|_| Type::Unit),
             token(TokenKind::Deref)
@@ -178,7 +178,9 @@ fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
         ))
     })
     .map(|x| TypeDef::Type(x))
-    .labelled("Type Literal")
+    .labelled("Type Literal");
+    log::trace!("Completed type literal parser");
+    t
 }
 
 fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
@@ -226,52 +228,51 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
     // Combine base identifier with optional accessor chain
     ident
         .clone()
-        .then(accessor_chain)
-        .map(|(base, accessors)| {
-            if accessors.is_empty() {
-                base
-            } else {
-                // Convert chain of accessors into nested Accessor types
-                let initial = IdentifierType::Accessor {
-                    left: Box::new(base),
-                    right: None,
-                };
-                accessors
-                    .into_iter()
-                    .fold(initial, |acc, accessor| match acc {
-                        IdentifierType::Accessor { right, left } => {
-                            if right.is_some() {
-                                IdentifierType::Accessor {
-                                    left: Box::new(IdentifierType::Accessor { left, right }),
-                                    right: Some(accessor),
-                                }
-                            } else {
-                                IdentifierType::Accessor {
-                                    left,
-                                    right: Some(accessor),
-                                }
-                            }
-                        }
-                        _ => unreachable!(),
-                    })
-            }
-        })
+        // .then(accessor_chain)
+        // .map(|(base, accessors)| {
+        //     if accessors.is_empty() {
+        //         base
+        //     } else {
+        //         // Convert chain of accessors into nested Accessor types
+        //         let initial = IdentifierType::Accessor {
+        //             left: Box::new(base),
+        //             right: None,
+        //         };
+        //         accessors
+        //             .into_iter()
+        //             .fold(initial, |acc, accessor| match acc {
+        //                 IdentifierType::Accessor { right, left } => {
+        //                     if right.is_some() {
+        //                         IdentifierType::Accessor {
+        //                             left: Box::new(IdentifierType::Accessor { left, right }),
+        //                             right: Some(accessor),
+        //                         }
+        //                     } else {
+        //                         IdentifierType::Accessor {
+        //                             left,
+        //                             right: Some(accessor),
+        //                         }
+        //                     }
+        //                 }
+        //                 _ => unreachable!(),
+        //             })
+        //     }
+        // })
         .labelled("Identifier With Accessors")
 }
 
-fn ident_node() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
-    ident()
-        .map(|x| ASTNode::Identifier(x))
-        .labelled("Base Ident")
+fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
+    ident().map(|x| Expr::Identifier(x)).labelled("Base Ident")
 }
 
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    recursive(|r| {
+    recursive(move |r| {
+        log::trace!("Moving into record definition");
         lbrace()
             .ignore_then(
                 ident()
                     .then_ignore(colon())
-                    .then(type_literal().or(r.clone()))
+                    .then(type_literal().or(r.clone().boxed()))
                     .repeated(), // .separated_by(comma().ignored()),
             )
             .then_ignore(rbrace())
@@ -293,7 +294,8 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    recursive(|t| {
+    recursive(move |t| {
+        log::trace!("Moving into tuple defintiion");
         lparen()
             .ignore_then(
                 choice((type_literal(), record_definition(), t.clone()))
@@ -330,7 +332,7 @@ fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
         .labelled("Variant Definition")
 }
 
-fn type_definition() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
+fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     token(TokenKind::TypeKeyword)
         .ignore_then(ident_token())
         .then_ignore(assign())
@@ -340,27 +342,28 @@ fn type_definition() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
             variant_definition(),
             type_literal(),
         )))
-        .map(|(value, t_)| ASTNode::TypeDefinition(value, t_))
+        .map(|(value, t_)| Stmt::TypeDefinition(value, t_))
         .labelled("Type Definition")
 }
 
-fn expr<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
-    recursive(|expr| {
+fn expr<'a>(
+    stmt: BoxedParser<'a, Token, Stmt, Simple<Token>>,
+) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
+    log::trace!("Inside the expr parser");
+    recursive(move |expr| {
+        log::trace!("moving into expr");
         let array_literal = (expr.clone().separated_by(comma().boxed()))
             .delimited_by(lbracket().boxed(), rbracket().boxed())
-            .map(|x| ASTNode::ArrayLiteral(x))
+            .map(|x| Expr::ArrayLiteral(x))
             .labelled("Array Literal");
 
+        log::trace!("Record Literal");
         let record_literal = (ident_token().boxed())
             .then_ignore(assign().boxed())
             .then(expr.clone())
             .separated_by(comma().boxed())
             .delimited_by(lbrace().boxed(), rbrace().boxed())
-            .map(|x| {
-                // log::info!("Record Literal: {:?}", x);
-                x
-            })
-            .map(|x: Vec<(String, ASTNode)>| ASTNode::RecordLiteral {
+            .map(|x: Vec<(String, Expr)>| Expr::RecordLiteral {
                 fields: x
                     .into_iter()
                     .map(|(name, value)| RecordField { name, value })
@@ -368,22 +371,35 @@ fn expr<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             })
             .labelled("Record Literal");
 
+        log::trace!("Tuple Literal");
         let tuple_literal = ((expr.clone().then_ignore(comma()))
             .then(expr.clone().separated_by(comma()))
             .boxed())
         .delimited_by(lparen().boxed(), rparen().boxed())
-        .map(|(first, rest): (ASTNode, Vec<ASTNode>)| {
+        .map(|(first, rest): (Expr, Vec<Expr>)| {
             let mut v = Vec::with_capacity(rest.len() + 1);
             v.push(first);
             v.extend(rest);
-            ASTNode::TupleLiteral(v)
+            Expr::TupleLiteral(v)
         })
         .labelled("Tuple Literal");
 
-        let func_call = (ident_token().then(expr.clone().repeated()).boxed())
-            .map(|(name, arguments)| ASTNode::FunctionCall { name, arguments })
-            .labelled("Function Call");
+        log::trace!("Block Expr");
+        let block_expr = indent()
+            .ignore_then(stmt.repeated())
+            .then_ignore(dedent())
+            .map(|x| Expr::Block(x))
+            .labelled("Block Expression");
 
+        let func_call = (ident_token().then(expr.clone().repeated()).boxed())
+            .map(|(name, args)| Expr::FunctionCall { name, args })
+            .labelled("Function Call")
+            .boxed();
+
+        log::trace!("Paren Expression");
+        let paren_expression = lparen().ignore_then(expr.clone()).then_ignore(rparen());
+
+        log::trace!("Expr Choice");
         choice((
             array_literal.boxed(),
             record_literal.boxed(),
@@ -392,19 +408,12 @@ fn expr<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             str_().boxed(),
             bool().boxed(),
             unit()
-                .map(|_| ASTNode::Identifier(IdentifierType::Unit))
+                .map(|_| Expr::Identifier(IdentifierType::Unit))
                 .boxed(),
             // func_call,
             ident_node().boxed(),
-            // expr.clone()
-            //     .repeated()
-            //     .delimited_by(lparen().boxed(), rparen().boxed())
-            //     .map(|x| ASTNode::LogicBlock(x)),
-            // indent()
-            //     .ignore_then(expr.clone().repeated())
-            //     .then_ignore(dedent())
-            //     .map(|x| ASTNode::LogicBlock(x)),
-            expr.delimited_by(lparen().boxed(), rparen().boxed()),
+            block_expr.boxed(),
+            paren_expression.boxed(),
         ))
         .labelled("Expression")
         .padded_by(token(TokenKind::Comment).or_not().ignored())
@@ -412,10 +421,11 @@ fn expr<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
     .boxed()
 }
 
-fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
+fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
+    log::trace!("Starting the stmt parser");
     // Prepare all the parsers inside the statement function
     let ident = ident().boxed();
-    let ident_node = ident_node().boxed();
+    let ident_node = ident_node().map(Stmt::Expr).boxed();
     let ident_token = ident_token().boxed();
     let comma = comma().boxed();
     let lbrace = lbrace().boxed();
@@ -425,32 +435,33 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
     let lbracket = lbracket().boxed();
     let rbracket = rbracket().boxed();
     let type_literal = type_literal().boxed();
-    let expr = expr().boxed();
     let assign = assign().boxed();
     let type_ = type_definition().boxed();
     let indent = indent().boxed();
     let dedent = dedent().boxed();
 
-    recursive(move |stmt| {
+    recursive(move |rstmt| {
+        log::trace!("Moving into stmt");
+        let expr = expr(rstmt.clone().boxed()).boxed();
         let record_destructure = (ident
             .clone()
             .separated_by(comma.clone())
             .delimited_by(lbrace.clone(), rbrace.clone()))
-        .map(|s| ASTNode::Identifier(IdentifierType::RecordDestructure(s, None)))
+        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::RecordDestructure(s, None))))
         .labelled("Record Destructure");
 
         let array_destructure = (ident
             .clone()
             .separated_by(comma.clone())
             .delimited_by(lbracket.clone(), rbracket.clone()))
-        .map(|s| ASTNode::Identifier(IdentifierType::ArrayDestructure(s, None)))
+        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::ArrayDestructure(s, None))))
         .labelled("Array Destructure");
 
         let tuple_destructure = (ident
             .clone()
             .separated_by(comma.clone())
             .delimited_by(lparen.clone(), rparen.clone()))
-        .map(|s| ASTNode::Identifier(IdentifierType::TupleDestructure(s, None)))
+        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::TupleDestructure(s, None))))
         .labelled("Tuple Destructure");
 
         let ident_types = choice((
@@ -468,20 +479,20 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
             .then(type_literal.clone())
             .then_ignore(rparen.clone())
             .map(|(node, def)| match node {
-                ASTNode::Identifier(ident) => match (ident, def) {
+                Stmt::Expr(Expr::Identifier(ident)) => match (ident, def) {
                     (IdentifierType::Identifier(n, _), TypeDef::Type(t)) => {
-                        ASTNode::Identifier(IdentifierType::Identifier(n, Some(t)))
+                        Stmt::Expr(Expr::Identifier(IdentifierType::Identifier(n, Some(t))))
                     }
-                    (IdentifierType::RecordDestructure(n, _), TypeDef::Type(t)) => {
-                        ASTNode::Identifier(IdentifierType::RecordDestructure(n, Some(t)))
-                    }
-                    (IdentifierType::ArrayDestructure(n, _), TypeDef::Type(t)) => {
-                        ASTNode::Identifier(IdentifierType::ArrayDestructure(n, Some(t)))
-                    }
-                    (IdentifierType::TupleDestructure(n, _), TypeDef::Type(t)) => {
-                        ASTNode::Identifier(IdentifierType::TupleDestructure(n, Some(t)))
-                    }
-                    (x @ IdentifierType::Bucket, _) => ASTNode::Identifier(x),
+                    (IdentifierType::RecordDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
+                        Expr::Identifier(IdentifierType::RecordDestructure(n, Some(t))),
+                    ),
+                    (IdentifierType::ArrayDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
+                        Expr::Identifier(IdentifierType::ArrayDestructure(n, Some(t))),
+                    ),
+                    (IdentifierType::TupleDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
+                        Expr::Identifier(IdentifierType::TupleDestructure(n, Some(t))),
+                    ),
+                    (x @ IdentifierType::Bucket, _) => Stmt::Expr(Expr::Identifier(x)),
                     _ => panic!(),
                 },
                 _ => panic!(),
@@ -498,18 +509,19 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 .then(let_identifier)
                 .then_ignore(assign.clone())
                 .then(choice((
-                    // expr.clone()
-                    //     .repeated()
-                    //     .delimited_by(ident.clone(), dedent.clone())
-                    //     .map(|x| ASTNode::LogicBlock(x)),
+                    rstmt
+                        .clone()
+                        .repeated()
+                        .delimited_by(ident.clone(), dedent.clone())
+                        .map(|x| Expr::Block(x)),
                     expr.clone(),
                 )))
                 .map(|((mutable, name), value)| {
                     let identifier = match name {
-                        ASTNode::Identifier(n) => n,
+                        Stmt::Expr(Expr::Identifier(n)) => n,
                         _ => panic!(),
                     };
-                    ASTNode::LetExpression(LetExpression {
+                    Stmt::LetStatement(LetExpression {
                         identifier,
                         value: Box::new(value),
                         mutable,
@@ -521,29 +533,26 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                 let exprs = choice((
                     indent
                         .clone()
-                        .ignore_then(stmt.clone().repeated())
+                        .ignore_then(rstmt.clone().repeated())
                         .then_ignore(dedent.clone())
                         .boxed(),
-                    expr.clone().map(|x| vec![x]).boxed(),
+                    expr.clone().map(|x| vec![Stmt::Expr(x)]).boxed(),
                 ))
                 // .recover_with(skip_parser(expr.clone().map(|x| vec![x])))
-                .map_err(error("Function Expressions"))
                 .labelled("Function Body")
                 .boxed();
 
                 let idents = ident_token
                     .clone()
-                    .then(
-                        (unit().boxed().map(|_| vec![]))
-                            .or(ident.clone().repeated())
-                            .boxed(),
-                    )
+                    .then(choice((
+                        (unit().boxed().map(|_| vec![])),
+                        (ident.clone().repeated()).boxed(),
+                    )))
                     .labelled("Function Arguments")
                     .boxed();
 
                 let return_type = colon()
-                    .ignored()
-                    .then(type_literal.clone())
+                    .ignore_then(type_literal.clone())
                     .or_not()
                     .labelled("Return Type")
                     .boxed();
@@ -553,10 +562,10 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                     .then(assign.clone().ignored())
                     .then(exprs)
                     .map(|((((name, args), return_), _), body)| {
-                        ASTNode::FunctionDefinition(FunctionDefinition {
+                        Stmt::FunctionDefinition(FunctionDefinition {
                             name: Some(name),
                             return_type: match return_ {
-                                Some((_, t)) => match t {
+                                Some(t) => match t {
                                     TypeDef::Type(t) => Some(t),
                                     _ => panic!(),
                                 },
@@ -566,85 +575,98 @@ fn stmt<'a>() -> BoxedParser<'a, Token, ASTNode, Simple<Token>> {
                             body,
                         })
                     })
-                    .labelled("Function")
+                    .boxed()
             };
             token(TokenKind::Let)
-                .ignore_then(choice((val, func)).map_err(error("Inside Let Statement")))
+                .ignore_then(choice((val, func)))
+                .boxed()
         })
         .labelled("Let Stmt")
         .boxed();
 
-        choice((let_stmt.clone(), type_.clone(), expr.clone()))
-            .map_err(|x| {
-                log::error!("Inside Statements");
-                error_report(x)
-            })
-            .padded_by(token(TokenKind::Comment).or_not().ignored())
-            .labelled("Statement")
-    })
-    .boxed()
-}
-
-fn go_import() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
-    (import().ignore_then(str_())).map(|s| match s {
-        ASTNode::StringLiteral(value) => ASTNode::GoImport(GoImport {
-            module: value,
-            alias: None,
-        }),
-        _ => panic!(),
-    })
-}
-
-fn fungo_import() -> impl Parser<Token, ASTNode, Error = Simple<Token>> {
-    import()
-        .ignore_then(ident_token())
-        .map(|s| ASTNode::FungoImport(FungoImport { module: s }))
-}
-
-fn parser() -> impl Parser<Token, Vec<ASTNode>, Error = Simple<Token>> {
-    let top_level_stmt = choice((go_import(), fungo_import(), stmt()))
+        choice((
+            let_stmt.clone(),
+            type_.clone(),
+            expr.clone().map(Stmt::Expr),
+        ))
         .padded_by(token(TokenKind::Comment).or_not().ignored())
-        .boxed();
+        .labelled("Statement")
+    })
+}
+
+fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
+    log::trace!("Go import parser");
+    (import().ignore_then(str_())).map(|s| {
+        log::debug!("GO IMPORT");
+        match s {
+            Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
+                module: value,
+                alias: None,
+            }),
+            _ => panic!(),
+        }
+    })
+}
+
+fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
+    log::trace!("FunGo import parser");
+    import().ignore_then(ident_token()).map(|s| {
+        return TopLevel::FungoImport(FungoImport { module: s });
+    })
+}
+
+fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
+    let go_import = go_import();
+    let fungo_import = fungo_import();
+    let stmt = stmt().boxed();
+    let top_level_stmt = choice((
+        go_import.boxed(),
+        fungo_import.boxed(),
+        stmt.map(TopLevel::Stmt).boxed(),
+    ))
+    .map(|x| {
+        log::debug!("Currently at {:?}", x);
+        x
+    })
+    .padded_by(token(TokenKind::Comment).or_not());
+    // .recover_with(skip_parser(stmt().boxed()));
 
     top_level_stmt
         .repeated()
         .then_ignore(token(TokenKind::EOF))
         .then_ignore(end())
-        .boxed()
-        .map_err(error("Inside regular parser"))
-}
-
-fn error(msg: &str) -> fn(Simple<Token>) -> Simple<Token> {
-    log::error!("{}", msg);
-    error_report
 }
 
 fn error_report(err: Simple<Token>) -> Simple<Token> {
-    let Token {
+    if let Some(Token {
         kind,
         span,
         source,
         file,
-    } = err.found().unwrap();
-    let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
-    log::error!("Unexpected token: {:?}", kind);
-    log::error!("Expected: {:?}", expected);
+    }) = err.found()
+    {
+        let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
+        log::error!("Unexpected token: {:?}", kind);
+        log::error!("Expected: {:?}", expected);
 
-    let mut colors = ariadne::ColorGenerator::new();
-    let a = colors.next();
-    let b = colors.next();
-    let first = span.start;
-    let second = span.end;
-    Report::build(ReportKind::Error, (file.clone(), first..second))
-        .with_code(1)
-        .with_note("Unexpected Token")
-        .with_label(
-            Label::new((file.clone(), span.clone()))
-                .with_message(format!("Unexpected Token: {:?}", kind))
-                .with_color(a),
-        )
-        .finish()
-        .print((file.clone(), Source::from(source.clone().as_str())))
-        .unwrap();
+        let mut colors = ariadne::ColorGenerator::new();
+        let a = colors.next();
+        let first = span.start;
+        let second = span.end;
+        Report::build(ReportKind::Error, (file.clone(), first..second))
+            .with_code(1)
+            .with_note("Unexpected Token")
+            .with_note(format!("Label: {:?}", err.label()))
+            .with_label(
+                Label::new((file.clone(), span.clone()))
+                    .with_message(format!("Unexpected Token: {:?}", kind))
+                    .with_color(a),
+            )
+            .finish()
+            .print((file.clone(), Source::from(source.clone().as_str())))
+            .unwrap();
+    } else {
+        log::error!("Error: {:?}", err);
+    }
     err
 }
