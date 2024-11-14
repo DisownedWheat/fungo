@@ -28,6 +28,24 @@ pub enum TokenKind {
     False,
     #[token("match")]
     Match,
+    #[token("with")]
+    With,
+    #[token("when")]
+    When,
+    #[token("interface")]
+    Interface,
+    #[token("and")]
+    And,
+    #[token("or")]
+    Or,
+    #[token("type")]
+    TypeKeyword,
+    #[token("private")]
+    Private,
+    #[token("mutable")]
+    Mut,
+    #[token("module")]
+    Module,
 
     #[regex(r"\+|-|\/|%|\^|<<|>>")]
     Operator,
@@ -63,12 +81,6 @@ pub enum TokenKind {
     Channel,
     #[token("::")]
     Append,
-    #[token("type")]
-    TypeKeyword,
-    #[token("private")]
-    Private,
-    #[token("mutable")]
-    Mut,
     #[token("==")]
     Equality,
     #[token(">")]
@@ -79,10 +91,6 @@ pub enum TokenKind {
     GTE,
     #[token("<=")]
     LTE,
-    #[token("and")]
-    And,
-    #[token("or")]
-    Or,
     #[token("|>")]
     PipeRight,
     #[token("|")]
@@ -93,10 +101,6 @@ pub enum TokenKind {
     Comment,
     #[token("->")]
     ReturnType,
-    #[token("interface")]
-    Interface,
-
-    EOF,
     #[regex(r"\n")]
     NewLine,
     #[regex(r"\t")]
@@ -106,6 +110,7 @@ pub enum TokenKind {
 
     Indent,
     Dedent,
+    EOF,
 }
 
 type Span = Range<usize>;
