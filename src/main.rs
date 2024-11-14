@@ -15,7 +15,6 @@ fn main() {
         .filter_level(log::LevelFilter::Debug)
         .init();
     let tokens = lexer::lex("./test_file").unwrap();
-    log::debug!("Got the tokens");
     match parser().parse(tokens) {
         Ok(ast) => {
             let pretty = to_string_pretty(&ast).unwrap();
@@ -196,10 +195,8 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
         .labelled("Ident")
         .boxed();
 
-    let ident = choice((
+    choice((
         base_ident.clone(),
-        // Regular identifier with optional pointer
-        // Typed identifier with optional pointer
         lparen()
             .ignore_then(pointer().then(ident_token()))
             .then_ignore(colon())
@@ -217,48 +214,7 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
             })
             .labelled("Typed_Ident"),
     ))
-    .boxed();
-
-    // Property accessor chain
-    let accessor_chain = (token(TokenKind::Dot).ignore_then(ident_token()))
-        .repeated()
-        .labelled("Accessor Chain")
-        .boxed();
-
-    // Combine base identifier with optional accessor chain
-    ident
-        .clone()
-        // .then(accessor_chain)
-        // .map(|(base, accessors)| {
-        //     if accessors.is_empty() {
-        //         base
-        //     } else {
-        //         // Convert chain of accessors into nested Accessor types
-        //         let initial = IdentifierType::Accessor {
-        //             left: Box::new(base),
-        //             right: None,
-        //         };
-        //         accessors
-        //             .into_iter()
-        //             .fold(initial, |acc, accessor| match acc {
-        //                 IdentifierType::Accessor { right, left } => {
-        //                     if right.is_some() {
-        //                         IdentifierType::Accessor {
-        //                             left: Box::new(IdentifierType::Accessor { left, right }),
-        //                             right: Some(accessor),
-        //                         }
-        //                     } else {
-        //                         IdentifierType::Accessor {
-        //                             left,
-        //                             right: Some(accessor),
-        //                         }
-        //                     }
-        //                 }
-        //                 _ => unreachable!(),
-        //             })
-        //     }
-        // })
-        .labelled("Identifier With Accessors")
+    .boxed()
 }
 
 fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
@@ -435,7 +391,7 @@ fn expr<'a>(
             unit()
                 .map(|_| Expr::Identifier(IdentifierType::Unit))
                 .boxed(),
-            // func_call,
+            func_call,
             ident_node().boxed(),
             block_expr.boxed(),
             paren_expression.boxed(),
@@ -467,7 +423,11 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 
     recursive(move |rstmt| {
         log::trace!("Moving into stmt");
+
+        // Because the stmt and expr parsers are mutually recursive the expr parser needs to be
+        // instantiated here with the recurst stmt parser
         let expr = expr(rstmt.clone().boxed()).boxed();
+
         let record_destructure = (ident
             .clone()
             .separated_by(comma.clone())
@@ -621,15 +581,12 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 
 fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
     log::trace!("Go import parser");
-    (import().ignore_then(str_())).map(|s| {
-        log::debug!("GO IMPORT");
-        match s {
-            Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
-                module: value,
-                alias: None,
-            }),
-            _ => panic!(),
-        }
+    (import().ignore_then(str_())).map(|s| match s {
+        Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
+            module: value,
+            alias: None,
+        }),
+        _ => panic!(),
     })
 }
 
@@ -649,10 +606,6 @@ fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
         fungo_import.boxed(),
         stmt.map(TopLevel::Stmt).boxed(),
     ))
-    .map(|x| {
-        log::debug!("Currently at {:?}", x);
-        x
-    })
     .padded_by(token(TokenKind::Comment).or_not());
     // .recover_with(skip_parser(stmt().boxed()));
 
