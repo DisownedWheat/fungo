@@ -13,6 +13,8 @@ pub enum TokenKind {
     Import,
     #[regex(r#""[^"]*""#, |lex| (lex.slice().to_string()))]
     StringLiteral(String),
+    #[regex(r"//.*")]
+    Comment,
 
     #[token("of")]
     Of,
@@ -22,6 +24,10 @@ pub enum TokenKind {
     If,
     #[token("else")]
     Else,
+    #[token("and")]
+    And,
+    #[token("or")]
+    Or,
     #[token("true")]
     True,
     #[token("false")]
@@ -34,10 +40,6 @@ pub enum TokenKind {
     When,
     #[token("interface")]
     Interface,
-    #[token("and")]
-    And,
-    #[token("or")]
-    Or,
     #[token("type")]
     TypeKeyword,
     #[token("private")]
@@ -78,7 +80,7 @@ pub enum TokenKind {
     #[token("*")]
     Deref,
     #[token("<-")]
-    Channel,
+    ChannelAssign,
     #[token("::")]
     Append,
     #[token("==")]
@@ -97,8 +99,6 @@ pub enum TokenKind {
     Pipe,
     #[token("..")]
     Range,
-    #[regex(r"//.*")]
-    Comment,
     #[token("->")]
     ReturnType,
     #[regex(r"\n")]
