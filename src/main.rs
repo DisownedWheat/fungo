@@ -347,10 +347,15 @@ fn expr<'a>(
             .map(|x| Expr::Block(x))
             .labelled("Block Expression");
 
-        let func_call = (ident_token().then(expr.clone().repeated()).boxed())
-            .map(|(name, args)| Expr::FunctionCall { name, args })
-            .labelled("Function Call")
-            .boxed();
+        let func_call = (ident_token().then(choice((
+            indent()
+                .ignore_then(expr.clone().repeated())
+                .then_ignore(dedent()),
+            expr.clone().repeated().boxed(),
+        ))))
+        .map(|(name, args)| Expr::FunctionCall { name, args })
+        .labelled("Function Call")
+        .boxed();
 
         log::trace!("Paren Expression");
         let paren_expression = lparen()
@@ -358,7 +363,6 @@ fn expr<'a>(
             .then_ignore(rparen())
             .boxed();
 
-        log::trace!("Expr Choice");
         let accessor_idents = choice((
             array_literal.clone().boxed(),
             record_literal.clone().boxed(),
@@ -380,8 +384,10 @@ fn expr<'a>(
                     right: Box::new(acc),
                 })
             });
+
         choice((
             accessor.boxed(),
+            func_call,
             array_literal.boxed(),
             record_literal.boxed(),
             tuple_literal.boxed(),
@@ -391,7 +397,6 @@ fn expr<'a>(
             unit()
                 .map(|_| Expr::Identifier(IdentifierType::Unit))
                 .boxed(),
-            func_call,
             ident_node().boxed(),
             block_expr.boxed(),
             paren_expression.boxed(),
