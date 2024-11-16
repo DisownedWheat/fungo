@@ -381,10 +381,10 @@ fn expr<'a>(
                 })
             });
         choice((
+            accessor.boxed(),
             array_literal.boxed(),
             record_literal.boxed(),
             tuple_literal.boxed(),
-            accessor.boxed(),
             digit().boxed(),
             str_().boxed(),
             bool().boxed(),
