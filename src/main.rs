@@ -528,7 +528,6 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
                         .boxed(),
                     expr.clone().map(|x| vec![Stmt::Expr(x)]).boxed(),
                 ))
-                // .recover_with(skip_parser(expr.clone().map(|x| vec![x])))
                 .labelled("Function Body")
                 .boxed();
 
@@ -612,7 +611,6 @@ fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
         stmt.map(TopLevel::Stmt).boxed(),
     ))
     .padded_by(token(TokenKind::Comment).or_not());
-    // .recover_with(skip_parser(stmt().boxed()));
 
     top_level_stmt
         .repeated()
