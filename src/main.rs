@@ -354,8 +354,7 @@ fn expr<'a>(
             expr.clone().repeated().boxed(),
         ))))
         .map(|(name, args)| Expr::FunctionCall { name, args })
-        .labelled("Function Call")
-        .boxed();
+        .labelled("Function Call");
 
         log::trace!("Paren Expression");
         let paren_expression = lparen()
@@ -386,8 +385,8 @@ fn expr<'a>(
             });
 
         choice((
+            func_call.boxed(),
             accessor.boxed(),
-            func_call,
             array_literal.boxed(),
             record_literal.boxed(),
             tuple_literal.boxed(),
@@ -519,6 +518,7 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
                 })
                 .labelled("Let value")
                 .boxed();
+
             let func = {
                 let exprs = choice((
                     indent
