@@ -1,6 +1,6 @@
 open "fmt"
 open Test
-let text = 1
+let x = testFunc 0 1 "a"
 
 type TestRecord = {
 	TestVal: []*int
@@ -23,6 +23,8 @@ let main () =
 		AnotherTest = {InteriorTest = "Hello World"}
 	}
 	print record
+	getValue
+		&record
 	let x = (1, 2, 3)
 	let y = ({value = record.TestVal})
 	()
