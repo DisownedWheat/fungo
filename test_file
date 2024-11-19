@@ -1,6 +1,11 @@
 open "fmt"
 open Test
-let x = testFunc 0 1 "a"
+testCall
+	(1, 2)
+	3
+	4
+let x =
+	testFunc 0 1 "a"
 
 type TestRecord = {
 	TestVal: []*int
