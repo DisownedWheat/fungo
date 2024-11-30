@@ -115,9 +115,7 @@ fn bool() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 }
 
 fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    log::trace!("Building type_literal parser");
     let t = recursive(move |t| {
-        log::trace!("Moving into Type Literal");
         choice((
             unit().map(|_| Type::Unit),
             token(TokenKind::Deref)
@@ -156,7 +154,6 @@ fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     })
     .map(|x| TypeDef::Type(x))
     .labelled("Type Literal");
-    log::trace!("Completed type literal parser");
     t
 }
 
@@ -201,7 +198,6 @@ fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     recursive(move |r| {
-        log::trace!("Moving into record definition");
         lbrace()
             .ignore_then(
                 ident()
@@ -229,7 +225,6 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 
 fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     recursive(move |t| {
-        log::trace!("Moving into tuple defintiion");
         lparen()
             .ignore_then(
                 choice((type_literal(), record_definition(), t.clone()))
@@ -283,15 +278,12 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 fn expr<'a>(
     stmt: BoxedParser<'a, Token, Stmt, Simple<Token>>,
 ) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
-    log::trace!("Inside the expr parser");
     recursive(move |expr| {
-        log::trace!("moving into expr");
         let array_literal = (expr.clone().separated_by(comma().boxed()))
             .delimited_by(lbracket().boxed(), rbracket().boxed())
             .map(|x| Expr::ArrayLiteral(x))
             .labelled("Array Literal");
 
-        log::trace!("Record Literal");
         let record_literal = (ident_token().boxed())
             .then_ignore(assign().boxed())
             .then(expr.clone())
@@ -305,7 +297,6 @@ fn expr<'a>(
             })
             .labelled("Record Literal");
 
-        log::trace!("Tuple Literal");
         let tuple_literal = ((expr.clone().then_ignore(comma()))
             .then(expr.clone().separated_by(comma()))
             .boxed())
@@ -318,14 +309,12 @@ fn expr<'a>(
         })
         .labelled("Tuple Literal");
 
-        log::trace!("Block Expr");
         let block_expr = indent()
             .ignore_then(stmt.repeated())
             .then_ignore(dedent())
             .map(|x| Expr::Block(x))
             .labelled("Block Expression");
 
-        log::trace!("Paren Expression");
         let paren_expression = lparen()
             .ignore_then(expr.clone())
             .then_ignore(rparen())
@@ -389,7 +378,6 @@ fn expr<'a>(
 }
 
 fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
-    log::trace!("Starting the stmt parser");
     // Prepare all the parsers inside the statement function
     let ident = ident().boxed();
     let ident_node = ident_node().map(Stmt::Expr).boxed();
@@ -408,8 +396,6 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     let dedent = dedent().boxed();
 
     recursive(move |rstmt| {
-        log::trace!("Moving into stmt");
-
         // Because the stmt and expr parsers are mutually recursive the expr parser needs to be
         // instantiated here with the recurst stmt parser
         let expr = expr(rstmt.clone().boxed()).boxed();
@@ -566,7 +552,6 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 }
 
 fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    log::trace!("Go import parser");
     (import().ignore_then(str_())).map(|s| match s {
         Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
             module: value,
@@ -577,7 +562,6 @@ fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
 }
 
 fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    log::trace!("FunGo import parser");
     import().ignore_then(ident_token()).map(|s| {
         return TopLevel::FungoImport(FungoImport { module: s });
     })
