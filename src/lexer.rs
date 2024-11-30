@@ -137,18 +137,79 @@ pub struct Token {
     pub file: Rc<String>,
 }
 
+pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
+    let path = Rc::new("stdin".to_string());
+    let input_rc = Rc::new(input.to_string());
+
+    let mut lexer = TokenKind::lexer(input);
+    let mut tokens = Vec::with_capacity(input.len() / 10);
+    while let Some(token) = lexer.next() {
+        let span = lexer.span();
+        match token {
+            Ok(x) => tokens.push(Ok(Token {
+                kind: x,
+                span,
+                source: input_rc.clone(),
+                file: path.clone(),
+            })),
+            Err(_) => tokens.push(Err(())),
+        }
+    }
+    tokens.push(Ok(Token {
+        kind: TokenKind::EOF,
+        span: (0 as usize)..(0 as usize),
+        source: input_rc.clone(),
+        file: path.clone(),
+    }));
+    let mut range = 0..0;
+    let mut context = Rc::new("".to_string());
+    let error_src = input_rc.clone();
+    let filtered_tokens = tokens
+        .into_iter()
+        .filter(move |token| match token {
+            Ok(x) => {
+                context = x.file.clone();
+                range = x.span.clone();
+                true
+            }
+            Err(_) => {
+                let mut colors = ariadne::ColorGenerator::new();
+                let a = colors.next();
+                Report::build(ReportKind::Error, (context.clone(), range.clone()))
+                    .with_code(2)
+                    .with_note("Error parsing White Space")
+                    .with_label(
+                        Label::new((context.clone(), range.clone()))
+                            .with_message("Unexpected token found")
+                            .with_color(a),
+                    )
+                    .finish()
+                    .print((context.clone(), Source::from(error_src.clone().as_str())))
+                    .unwrap();
+                false
+            }
+        })
+        .map(|token| token.unwrap())
+        .collect::<Vec<Token>>();
+
+    let mut whitespace_parser =
+        WhiteSpaceParser::new(filtered_tokens, input_rc.clone(), path.clone());
+    whitespace_parser.parse();
+    let parsed_output = whitespace_parser.get_output();
+    return Ok(parsed_output);
+}
+
 pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     // Get the source code as a Rc<String>
     let input = match std::fs::read_to_string(file_path) {
-        Ok(i) => i,
-        Err(_) => return Err(LexerError::FileNotFound),
+        Ok(i) => Rc::new(i),
+        Err(_) => return Err(LexerError::FileNotFound(file_path.to_string())),
     };
     let refcounted_file_path = Rc::new(file_path.to_string());
-    let refcounted_input = Rc::new(input);
 
     // Lex the input
-    let mut lexer = TokenKind::lexer(&refcounted_input);
-    let mut tokens = Vec::with_capacity(refcounted_input.len() / 10);
+    let mut lexer = TokenKind::lexer(&input);
+    let mut tokens = Vec::with_capacity(input.len() / 10);
     while let Some(token) = lexer.next() {
         let span = lexer.span();
         match token {
