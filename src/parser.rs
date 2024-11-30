@@ -595,7 +595,7 @@ pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
         .then_ignore(end())
 }
 
-pub fn error_report(err: Simple<Token>) -> Simple<Token> {
+pub fn error_report(err: &Simple<Token>) {
     if let Some(Token {
         kind,
         span,
@@ -626,5 +626,4 @@ pub fn error_report(err: Simple<Token>) -> Simple<Token> {
     } else {
         log::error!("Error: {:?}", err);
     }
-    err
 }

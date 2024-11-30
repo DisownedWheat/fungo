@@ -16,7 +16,7 @@ fn main() {
             println!("{}", pretty.cyan());
         }
         Err(e) => {
-            e.into_iter().for_each(|e| {
+            e.iter().for_each(|e| {
                 parser::error_report(e);
             });
         }
