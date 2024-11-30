@@ -355,6 +355,61 @@ impl WhiteSpaceParser {
     pub fn parse(&mut self) {
         while let Some(current) = self.pop_token() {
             let Token { kind, .. } = &current;
+            match kind {
+                &TokenKind::NewLine => {
+                    if self.output.len() == 0 {
+                        continue;
+                    }
+                    self.output.push(current);
+                    while let Some(current) = self.pop_token() {
+                        let tok = &current.kind;
+                        match tok {
+                            &TokenKind::NewLine => continue,
+
+                            &TokenKind::Space => {
+                                let (token, new_indent) = self.parse_spaces();
+                                if new_indent > self.current_indent {
+                                    self.push_indent();
+                                    self.current_indent = new_indent;
+                                } else if new_indent < self.current_indent {
+                                    self.push_dedent();
+                                    self.current_indent = new_indent;
+                                }
+                                self.output.push(token);
+                                break;
+                            }
+
+                            &TokenKind::Tab => {
+                                let (token, new_indent) = self.parse_tabs();
+                                if new_indent > self.current_indent {
+                                    self.push_indent();
+                                    self.current_indent = new_indent;
+                                } else if new_indent < self.current_indent {
+                                    self.push_dedent();
+                                    self.current_indent = new_indent;
+                                }
+                                self.output.push(token);
+                                break;
+                            }
+
+                            _ => {
+                                self.pop_to_root();
+                                self.output.push(current);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                &TokenKind::Space | &TokenKind::Tab => continue,
+                _ => self.output.push(current),
+            }
+        }
+    }
+
+    pub fn parse_old(&mut self) {
+        while let Some(current) = self.pop_token() {
+            let Token { kind, .. } = &current;
             if kind == &self.end_token_for_block {
                 self.output.push(current);
                 break;
