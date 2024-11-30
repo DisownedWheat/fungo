@@ -49,10 +49,10 @@ pub enum TokenKind {
     #[token("module")]
     Module,
 
-    #[regex(r"\+|-|\/|%|\^|<<|>>")]
-    Operator,
+    #[regex(r"\+|-|\/|%|\^|<<|>>", |lex| lex.slice().to_string())]
+    Operator(String),
 
-    #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| (lex.slice().to_string()))]
+    #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| lex.slice().to_string())]
     Identifier(String),
 
     #[token("=")]
