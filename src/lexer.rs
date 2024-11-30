@@ -558,3 +558,35 @@ impl WhiteSpaceParser {
         .unwrap();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test() {
+        let input = "
+let x =
+	1
+
+";
+        let expected_output = vec![
+            TokenKind::Let,
+            TokenKind::Identifier("x".to_string()),
+            TokenKind::Assign,
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::NumberLiteral("1".to_string()),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+            TokenKind::EOF,
+        ];
+        let output = lex_raw(input);
+        assert!(output.is_ok());
+        let kinds: Vec<TokenKind> = output
+            .unwrap()
+            .into_iter()
+            .map(|Token { kind, .. }| kind)
+            .collect();
+        assert_eq!(kinds, expected_output);
+    }
+}

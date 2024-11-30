@@ -627,3 +627,38 @@ pub fn error_report(err: &Simple<Token>) {
         log::error!("Error: {:?}", err);
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::super::lexer;
+    use super::*;
+    #[test]
+    fn test_simple_expressions() {}
+
+    #[test]
+    fn test_func_calls() {
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+        let input = "
+x 1 2
+y
+	5
+	4
+	3
+";
+        let tokens = lexer::lex_raw(input);
+        assert!(tokens.is_ok());
+        tokens
+            .as_ref()
+            .unwrap()
+            .iter()
+            .for_each(|x| log::debug!("{:?}", x.kind));
+        let output = parser().parse(tokens.unwrap());
+        let _ = output.as_ref().inspect_err(|errs| {
+            errs.iter().for_each(|e| error_report(e));
+        });
+        assert!(output.is_ok());
+        log::debug!("{:?}", output);
+    }
+}
