@@ -28,8 +28,12 @@ fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Tok
     .boxed()
 }
 
+fn newline<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
+    token(TokenKind::NewLine).ignored().boxed()
+}
+
 fn indent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::Indent).ignored()
+    token(TokenKind::Indent).padded_by(newline()).ignored()
 }
 
 fn dedent() -> impl Parser<Token, (), Error = Simple<Token>> {
@@ -197,12 +201,14 @@ fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 }
 
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
+    let newline = newline().boxed();
     recursive(move |r| {
         lbrace()
             .ignore_then(
                 ident()
                     .then_ignore(colon())
                     .then(type_literal().or(r.clone().boxed()))
+                    .padded_by(newline.clone())
                     .repeated(), // .separated_by(comma().ignored()),
             )
             .then_ignore(rbrace())
@@ -353,9 +359,13 @@ fn expr<'a>(
         let func_call = ident_token()
             .then(choice((
                 indent()
-                    .ignore_then(expr.clone().repeated())
+                    .ignore_then(expr.clone().separated_by(newline()))
                     .then_ignore(dedent()),
-                expr.clone().repeated().at_least(1).boxed(),
+                expr.clone()
+                    .repeated()
+                    .at_least(1)
+                    .then_ignore(newline())
+                    .boxed(),
             )))
             .map(|(name, args)| Expr::FunctionCall { name, args })
             .labelled("Function Call");
@@ -374,6 +384,7 @@ fn expr<'a>(
         .labelled("Expression")
         .padded_by(token(TokenKind::Comment).or_not().ignored())
     })
+    .padded_by(newline().or_not())
     .boxed()
 }
 
