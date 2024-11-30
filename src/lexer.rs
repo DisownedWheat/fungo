@@ -216,7 +216,7 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
             Ok(x) => tokens.push(Ok(Token {
                 kind: x,
                 span,
-                source: refcounted_input.clone(),
+                source: input.clone(),
                 file: refcounted_file_path.clone(),
             })),
             Err(_) => tokens.push(Err(())),
@@ -225,7 +225,7 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     tokens.push(Ok(Token {
         kind: TokenKind::EOF,
         span: (0 as usize)..(0 as usize),
-        source: refcounted_input.clone(),
+        source: input.clone(),
         file: refcounted_file_path.clone(),
     }));
 
@@ -233,7 +233,7 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     // TODO: Actually do something with the errors
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
-    let error_src = refcounted_input.clone();
+    let error_src = input.clone();
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
@@ -262,11 +262,8 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
         .map(|token| token.unwrap())
         .collect::<Vec<Token>>();
 
-    let mut whitespace_parser = WhiteSpaceParser::new(
-        filtered_tokens,
-        refcounted_input.clone(),
-        refcounted_file_path.clone(),
-    );
+    let mut whitespace_parser =
+        WhiteSpaceParser::new(filtered_tokens, input.clone(), refcounted_file_path.clone());
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
     return Ok(parsed_output);
