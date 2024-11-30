@@ -1,6 +1,6 @@
 use ariadne::{self, Label, Report, ReportKind, Source};
 use logos::Logos;
-use std::{ops::Range, rc::Rc};
+use std::{error::Error, fmt::Display, ops::Range, rc::Rc};
 
 #[derive(Debug, Logos, PartialEq, Eq, Clone, Hash)]
 // #[logos(skip r"[ \t\n\f]+")]
@@ -118,8 +118,16 @@ type Span = Range<usize>;
 #[derive(Debug)]
 pub enum LexerError {
     InvalidParseStep,
-    FileNotFound,
+    FileNotFound(String),
 }
+
+impl Display for LexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for LexerError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Token {
