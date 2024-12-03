@@ -29,15 +29,26 @@ fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Tok
 }
 
 fn newline<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
-    token(TokenKind::NewLine).ignored().boxed()
+    token(TokenKind::NewLine)
+        .ignored()
+        .labelled("Newline")
+        .boxed()
 }
 
 fn indent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::Indent).padded_by(newline()).ignored()
+    newline()
+        .or_not()
+        .ignore_then(token(TokenKind::Indent))
+        .ignored()
+        .labelled("Indent")
 }
 
 fn dedent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::Dedent).ignored()
+    newline()
+        .or_not()
+        .ignore_then(token(TokenKind::Dedent))
+        .ignored()
+        .labelled("Dedent")
 }
 
 fn comma() -> impl Parser<Token, Token, Error = Simple<Token>> {
@@ -88,7 +99,7 @@ fn pointer() -> impl Parser<Token, bool, Error = Simple<Token>> {
 }
 
 fn import() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::Import)
+    token(TokenKind::Import).labelled("import")
 }
 
 fn ident_token() -> impl Parser<Token, String, Error = Simple<Token>> {
@@ -324,7 +335,8 @@ fn expr<'a>(
         let paren_expression = lparen()
             .ignore_then(expr.clone())
             .then_ignore(rparen())
-            .boxed();
+            .boxed()
+            .labelled("Paren Expression");
 
         let atom = choice((
             array_literal.clone().boxed(),
@@ -332,7 +344,8 @@ fn expr<'a>(
             tuple_literal.clone().boxed(),
             ident_node().boxed(),
             paren_expression.clone(),
-        ));
+        ))
+        .labelled("Atom");
 
         let base_expr = atom
             .clone()
@@ -354,7 +367,8 @@ fn expr<'a>(
                         right: Box::new(acc),
                     })
                 }
-            });
+            })
+            .labelled("Base Expr");
 
         let func_call = ident_token()
             .then(choice((
@@ -384,7 +398,7 @@ fn expr<'a>(
         .labelled("Expression")
         .padded_by(token(TokenKind::Comment).or_not().ignored())
     })
-    .padded_by(newline().or_not())
+    .labelled("Expression")
     .boxed()
 }
 
@@ -563,7 +577,7 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 }
 
 fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    (import().ignore_then(str_())).map(|s| match s {
+    (import().ignore_then(str_()).then_ignore(newline())).map(|s| match s {
         Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
             module: value,
             alias: None,
@@ -573,9 +587,12 @@ fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
 }
 
 fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    import().ignore_then(ident_token()).map(|s| {
-        return TopLevel::FungoImport(FungoImport { module: s });
-    })
+    import()
+        .ignore_then(ident_token())
+        .then_ignore(newline())
+        .map(|s| {
+            return TopLevel::FungoImport(FungoImport { module: s });
+        })
 }
 
 pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
