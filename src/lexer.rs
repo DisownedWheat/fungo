@@ -564,11 +564,14 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
         let input = "
 let x =
 	1
-
 ";
+        log::debug!("{}", input);
         let expected_output = vec![
             TokenKind::Let,
             TokenKind::Identifier("x".to_string()),
