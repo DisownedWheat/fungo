@@ -662,20 +662,136 @@ x 1 2
 y
 	5
 	4
-	3
+	\"Hello World\"
 ";
         let tokens = lexer::lex_raw(input);
         assert!(tokens.is_ok());
+        let expected_tokens = vec![
+            TokenKind::Identifier("x".to_string()),
+            TokenKind::NumberLiteral("1".to_string()),
+            TokenKind::NumberLiteral("2".to_string()),
+            TokenKind::NewLine,
+            TokenKind::Identifier("y".to_string()),
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::NumberLiteral("5".to_string()),
+            TokenKind::NewLine,
+            TokenKind::NumberLiteral("4".to_string()),
+            TokenKind::NewLine,
+            TokenKind::StringLiteral("\"Hello World\"".to_string()),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+            TokenKind::EOF,
+        ];
+        assert_eq!(
+            tokens
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|x| x.kind.clone())
+                .collect::<Vec<TokenKind>>(),
+            expected_tokens
+        );
+
         tokens
             .as_ref()
             .unwrap()
             .iter()
             .for_each(|x| log::debug!("{:?}", x.kind));
-        let output = parser().parse(tokens.unwrap());
-        let _ = output.as_ref().inspect_err(|errs| {
+        let output = parser().parse(tokens.unwrap()).inspect_err(|errs| {
             errs.iter().for_each(|e| error_report(e));
         });
         assert!(output.is_ok());
+        let expected_output = vec![
+            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                name: "x".to_owned(),
+                args: vec![
+                    Expr::IntLiteral("1".to_owned()),
+                    Expr::IntLiteral("2".to_owned()),
+                ],
+            })),
+            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                name: "y".to_owned(),
+                args: vec![
+                    Expr::IntLiteral("5".to_owned()),
+                    Expr::IntLiteral("4".to_owned()),
+                    Expr::StringLiteral("\"Hello World\"".to_owned()),
+                ],
+            })),
+        ];
         log::debug!("{:?}", output);
+        let unwrapped = output.unwrap();
+        assert_eq!(unwrapped, expected_output);
+    }
+
+    #[test]
+    fn test_opens() {
+        let input = "
+open \"fmt\"
+open Test
+testCall
+	(1, 2)
+	3
+	4
+";
+        let expected_tokens = vec![
+            TokenKind::Import,
+            TokenKind::StringLiteral("\"fmt\"".to_owned()),
+            TokenKind::NewLine,
+            TokenKind::Import,
+            TokenKind::Identifier("Test".to_owned()),
+            TokenKind::NewLine,
+            TokenKind::Identifier("testCall".to_owned()),
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::LParen,
+            TokenKind::NumberLiteral("1".to_owned()),
+            TokenKind::Comma,
+            TokenKind::NumberLiteral("2".to_owned()),
+            TokenKind::RParen,
+            TokenKind::NewLine,
+            TokenKind::NumberLiteral("3".to_owned()),
+            TokenKind::NewLine,
+            TokenKind::NumberLiteral("4".to_owned()),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+            TokenKind::EOF,
+        ];
+
+        let tokens_result = lexer::lex_raw(input);
+        assert!(tokens_result.is_ok());
+        let tokens = tokens_result.unwrap();
+        let kinds = tokens
+            .iter()
+            .map(|x| x.kind.clone())
+            .collect::<Vec<TokenKind>>();
+        assert_eq!(kinds, expected_tokens);
+
+        let output_result = parser().parse(tokens);
+        assert!(output_result.is_ok());
+        let output = output_result.unwrap();
+
+        let expected_output = vec![
+            TopLevel::GoImport(GoImport {
+                module: "\"fmt\"".to_owned(),
+                alias: None,
+            }),
+            TopLevel::FungoImport(FungoImport {
+                module: "Test".to_owned(),
+            }),
+            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                name: "testCall".to_owned(),
+                args: vec![
+                    Expr::TupleLiteral(vec![
+                        Expr::IntLiteral("1".to_owned()),
+                        Expr::IntLiteral("2".to_owned()),
+                    ]),
+                    Expr::IntLiteral("3".to_owned()),
+                    Expr::IntLiteral("4".to_owned()),
+                ],
+            })),
+        ];
+
+        assert_eq!(output, expected_output);
     }
 }
