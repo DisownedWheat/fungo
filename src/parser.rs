@@ -36,16 +36,14 @@ fn newline<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
 }
 
 fn indent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    newline()
-        .or_not()
+    (newline().or_not())
         .ignore_then(token(TokenKind::Indent))
         .ignored()
         .labelled("Indent")
 }
 
 fn dedent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    newline()
-        .or_not()
+    (newline().or_not())
         .ignore_then(token(TokenKind::Dedent))
         .ignored()
         .labelled("Dedent")
@@ -276,21 +274,20 @@ fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 
 fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     choice((
-        token(TokenKind::Pipe)
-            .ignore_then(
-                ident_token().then(
-                    token(TokenKind::Of)
-                        .boxed()
-                        .ignore_then(choice((
-                            record_definition(),
-                            tuple_definition(),
-                            type_literal(),
-                        )))
-                        .or_not(),
-                ),
-            )
-            .separated_by(newline())
-            .delimited_by(indent().boxed(), dedent().boxed()),
+        (token(TokenKind::Pipe).ignore_then(
+            ident_token().then(
+                token(TokenKind::Of)
+                    .boxed()
+                    .ignore_then(choice((
+                        record_definition(),
+                        tuple_definition(),
+                        type_literal(),
+                    )))
+                    .or_not(),
+            ),
+        ))
+        .separated_by(newline())
+        .delimited_by(indent().boxed(), dedent().boxed()),
         token(TokenKind::Pipe)
             .ignore_then(
                 ident_token().then(
@@ -734,11 +731,6 @@ y
         ];
         assert_eq!(map_kinds(&tokens.as_ref().unwrap()), expected_tokens);
 
-        tokens
-            .as_ref()
-            .unwrap()
-            .iter()
-            .for_each(|x| log::debug!("{:?}", x.kind));
         let output = parser().parse(tokens.unwrap()).inspect_err(|errs| {
             errs.iter().for_each(|e| error_report(e));
         });
@@ -760,7 +752,6 @@ y
                 ],
             })),
         ];
-        log::debug!("{:?}", output);
         let unwrapped = output.unwrap();
         assert_eq!(unwrapped, expected_output);
     }
@@ -866,7 +857,6 @@ let x =
         let output_result = parser().parse(tokens);
         assert!(output_result.is_ok());
         let output = output_result.unwrap();
-        log::debug!("block expr: {:?}", output);
         let expected_output = vec![TopLevel::Stmt(Stmt::LetStatement(LetExpression {
             identifier: IdentifierType::Identifier("x".to_string(), None),
             mutable: false,
@@ -1040,6 +1030,8 @@ type TestTuple = (int, string, TestRecord)
 type TestADT =
 	| Test
 	| Testing of string
+
+type Test2 = | Test | Testing of int
 ";
             let token_result = lexer::lex_raw(input);
             assert!(token_result.is_ok());
@@ -1060,6 +1052,16 @@ type TestADT =
                 TokenKind::Identifier("string".to_string()),
                 TokenKind::NewLine,
                 TokenKind::Dedent,
+                TokenKind::TypeKeyword,
+                TokenKind::Identifier("Test2".to_string()),
+                TokenKind::Assign,
+                TokenKind::Pipe,
+                TokenKind::Identifier("Test".to_string()),
+                TokenKind::Pipe,
+                TokenKind::Identifier("Testing".to_string()),
+                TokenKind::Of,
+                TokenKind::Identifier("int".to_string()),
+                TokenKind::NewLine,
                 TokenKind::EOF,
             ];
             assert_eq!(kinds, expected_tokens);
