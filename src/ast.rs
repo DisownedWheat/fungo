@@ -8,12 +8,12 @@ pub type LogicBlock = Vec<Stmt>;
 pub type TokenPosition = (usize, usize);
 
 // Imports
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct FungoImport {
     pub module: ASTString,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct GoImport {
     pub module: ASTString,
     pub alias: Option<ASTString>,
@@ -21,18 +21,18 @@ pub struct GoImport {
 
 // Identifiers
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Identifier {
     pub value: ASTString,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Accessor {
     left: Box<IdentifierType>,
     right: Option<ASTString>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum IdentifierType {
     Identifier(ASTString, Option<Type>),
     Pointer(Box<IdentifierType>),
@@ -54,7 +54,7 @@ impl IdentifierType {
 
 // Types
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Type {
     Unit,
     Type {
@@ -65,7 +65,7 @@ pub enum Type {
     Slice(Box<Type>),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum TypeDef {
     Type(Type),
     VariantDefinition {
@@ -79,24 +79,24 @@ pub enum TypeDef {
 }
 
 // Records
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct RecordDefinitionField {
     pub name: ASTString,
     pub type_: TypeDef,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct RecordDefinition {
     pub fields: Vec<RecordDefinitionField>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct RecordField {
     pub name: ASTString,
     pub value: Expr,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct LetExpression {
     pub identifier: IdentifierType,
     pub value: Box<Expr>,
@@ -104,7 +104,7 @@ pub struct LetExpression {
 }
 
 // Functions
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct FunctionDefinition {
     pub name: Option<ASTString>,
     pub arguments: Vec<IdentifierType>,
@@ -112,30 +112,30 @@ pub struct FunctionDefinition {
     pub body: LogicBlock,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Tuple {
     length: usize,
     values: Vec<Type>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct EnumDefiniton {
     pub fields: Vec<(ASTString, Option<Type>)>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct PipeRight {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Assign {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Expr {
     Unit,
     Identifier(IdentifierType),
@@ -168,7 +168,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Stmt {
     Expr(Expr),
     LetStatement(LetExpression),
@@ -176,7 +176,7 @@ pub enum Stmt {
     TypeDefinition(ASTString, TypeDef),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum TopLevel {
     GoImport(GoImport),
     FungoImport(FungoImport),
