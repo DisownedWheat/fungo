@@ -881,6 +881,7 @@ let x =
     #[test]
     fn type_definitions() {
         setup();
+        let parser_ = parser();
         {
             let input = "
 type Testing = {x: int; y: int}
@@ -941,12 +942,64 @@ type TestRecord = {
                 TokenKind::EOF,
             ];
             assert_eq!(kinds, expected_tokens);
-            let output_result = parser().parse(tokens);
+            let output_result = parser_.parse(tokens);
             let _ = output_result
                 .as_ref()
                 .map_err(|x| x.iter().for_each(error_report));
             assert!(output_result.is_ok());
             let output = output_result.unwrap();
+            let expected_output = vec![
+                TopLevel::Stmt(Stmt::TypeDefinition(
+                    "Testing".to_string(),
+                    TypeDef::RecordDefinition(RecordDefinition {
+                        fields: vec![
+                            RecordDefinitionField {
+                                name: "x".to_string(),
+                                type_: TypeDef::Type(Type::Type {
+                                    name: "int".to_string(),
+                                    module: None,
+                                }),
+                            },
+                            RecordDefinitionField {
+                                name: "y".to_string(),
+                                type_: TypeDef::Type(Type::Type {
+                                    name: "int".to_string(),
+                                    module: None,
+                                }),
+                            },
+                        ],
+                    }),
+                )),
+                TopLevel::Stmt(Stmt::TypeDefinition(
+                    "TestRecord".to_string(),
+                    TypeDef::RecordDefinition(RecordDefinition {
+                        fields: vec![
+                            RecordDefinitionField {
+                                name: "TestVal".to_string(),
+                                type_: TypeDef::Type(Type::Slice(Box::new(Type::Pointer(
+                                    Box::new(Type::Type {
+                                        name: "int".to_string(),
+                                        module: None,
+                                    }),
+                                )))),
+                            },
+                            RecordDefinitionField {
+                                name: "AnotherTest".to_string(),
+                                type_: TypeDef::RecordDefinition(RecordDefinition {
+                                    fields: vec![RecordDefinitionField {
+                                        name: "InteriorTest".to_string(),
+                                        type_: TypeDef::Type(Type::Type {
+                                            name: "string".to_string(),
+                                            module: None,
+                                        }),
+                                    }],
+                                }),
+                            },
+                        ],
+                    }),
+                )),
+            ];
+            assert_eq!(output, expected_output);
         }
         {
             let input = "
@@ -971,6 +1024,11 @@ type TestTuple = (int, string, TestRecord)
                 TokenKind::EOF,
             ];
             assert_eq!(kinds, expected_tokens);
+            let output_result = parser_.parse(tokens);
+            let _ = output_result
+                .as_ref()
+                .map_err(|x| x.iter().for_each(error_report));
+            assert!(output_result.is_ok());
         }
         {
             let input = "
@@ -1000,6 +1058,11 @@ type TestADT =
                 TokenKind::EOF,
             ];
             assert_eq!(kinds, expected_tokens);
+            let output_result = parser_.parse(tokens);
+            let _ = output_result
+                .as_ref()
+                .map_err(|x| x.iter().for_each(error_report));
+            assert!(output_result.is_ok());
         }
     }
 }
