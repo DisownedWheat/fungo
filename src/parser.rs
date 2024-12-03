@@ -218,15 +218,29 @@ fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     let newline = newline().boxed();
     recursive(move |r| {
-        lbrace()
+        (indent().or_not())
+            .ignore_then(lbrace())
             .ignore_then(
-                ident()
-                    .then_ignore(colon())
-                    .then(type_literal().or(r.clone().boxed()))
-                    .padded_by(newline.clone())
-                    .repeated(), // .separated_by(comma().ignored()),
+                choice((
+                    newline
+                        .clone()
+                        .ignore_then(indent())
+                        .ignore_then(
+                            ident()
+                                .then_ignore(colon())
+                                .then(type_literal().or(r.clone().boxed()))
+                                .separated_by(newline.clone()),
+                        )
+                        .then_ignore(dedent().or_not()),
+                    ident()
+                        .then_ignore(colon())
+                        .then(type_literal().or(r.clone().boxed()))
+                        .separated_by(semicolon()),
+                ))
+                .boxed(),
             )
             .then_ignore(rbrace())
+            .then_ignore(dedent().or_not())
             .map(|x| RecordDefinition {
                 fields: x
                     .into_iter()
@@ -292,6 +306,7 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             variant_definition(),
             type_literal(),
         )))
+        .then_ignore(newline())
         .map(|(value, t_)| Stmt::TypeDefinition(value, t_))
         .labelled("Type Definition")
 }
@@ -632,7 +647,11 @@ pub fn error_report(err: &Simple<Token>) {
         let a = colors.next();
         let first = span.start;
         let second = span.end;
-        Report::build(ReportKind::Error, (file.clone(), first..second))
+        let first_i = first as isize;
+        let second_i = second as isize;
+        let mapped_span =
+            (std::cmp::max(first_i - 50, 0) as usize)..(std::cmp::max(second_i + 50, 0) as usize);
+        Report::build(ReportKind::Error, (file.clone(), mapped_span))
             .with_code(1)
             .with_note("Unexpected Token")
             .with_note(format!("Label: {:?}", err.label()))
@@ -653,14 +672,24 @@ pub fn error_report(err: &Simple<Token>) {
 mod test {
     use super::super::lexer;
     use super::*;
-    #[test]
-    fn test_simple_expressions() {}
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    fn setup() {
+        INIT.call_once(|| {
+            env_logger::builder()
+                .filter_level(log::LevelFilter::Debug)
+                .init();
+        })
+    }
+
+    fn map_kinds(tokens: &Vec<lexer::Token>) -> Vec<lexer::TokenKind> {
+        tokens.iter().map(|x| x.kind.clone()).collect()
+    }
 
     #[test]
     fn test_func_calls() {
-        env_logger::builder()
-            .filter_level(log::LevelFilter::Debug)
-            .init();
+        setup();
         let input = "
 x 1 2
 y
@@ -730,6 +759,7 @@ y
 
     #[test]
     fn test_opens() {
+        setup();
         let input = "
 open \"fmt\"
 open Test
@@ -740,23 +770,23 @@ testCall
 ";
         let expected_tokens = vec![
             TokenKind::Import,
-            TokenKind::StringLiteral("\"fmt\"".to_owned()),
+            TokenKind::StringLiteral("\"fmt\"".to_string()),
             TokenKind::NewLine,
             TokenKind::Import,
-            TokenKind::Identifier("Test".to_owned()),
+            TokenKind::Identifier("Test".to_string()),
             TokenKind::NewLine,
-            TokenKind::Identifier("testCall".to_owned()),
+            TokenKind::Identifier("testCall".to_string()),
             TokenKind::NewLine,
             TokenKind::Indent,
             TokenKind::LParen,
-            TokenKind::NumberLiteral("1".to_owned()),
+            TokenKind::NumberLiteral("1".to_string()),
             TokenKind::Comma,
-            TokenKind::NumberLiteral("2".to_owned()),
+            TokenKind::NumberLiteral("2".to_string()),
             TokenKind::RParen,
             TokenKind::NewLine,
-            TokenKind::NumberLiteral("3".to_owned()),
+            TokenKind::NumberLiteral("3".to_string()),
             TokenKind::NewLine,
-            TokenKind::NumberLiteral("4".to_owned()),
+            TokenKind::NumberLiteral("4".to_string()),
             TokenKind::NewLine,
             TokenKind::Dedent,
             TokenKind::EOF,
@@ -777,25 +807,199 @@ testCall
 
         let expected_output = vec![
             TopLevel::GoImport(GoImport {
-                module: "\"fmt\"".to_owned(),
+                module: "\"fmt\"".to_string(),
                 alias: None,
             }),
             TopLevel::FungoImport(FungoImport {
-                module: "Test".to_owned(),
+                module: "Test".to_string(),
             }),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "testCall".to_owned(),
+                name: "testCall".to_string(),
                 args: vec![
                     Expr::TupleLiteral(vec![
-                        Expr::IntLiteral("1".to_owned()),
-                        Expr::IntLiteral("2".to_owned()),
+                        Expr::IntLiteral("1".to_string()),
+                        Expr::IntLiteral("2".to_string()),
                     ]),
-                    Expr::IntLiteral("3".to_owned()),
-                    Expr::IntLiteral("4".to_owned()),
+                    Expr::IntLiteral("3".to_string()),
+                    Expr::IntLiteral("4".to_string()),
                 ],
             })),
         ];
 
         assert_eq!(output, expected_output);
+    }
+
+    #[test]
+    fn block_expression() {
+        setup();
+        let input = "
+let x =
+	testFunc 0 1 \"a\"
+";
+        let token_result = lexer::lex_raw(input);
+        assert!(token_result.is_ok());
+        let tokens = token_result.unwrap();
+
+        let expected_tokens = vec![
+            TokenKind::Let,
+            TokenKind::Identifier("x".to_string()),
+            TokenKind::Assign,
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::Identifier("testFunc".to_string()),
+            TokenKind::NumberLiteral("0".to_string()),
+            TokenKind::NumberLiteral("1".to_string()),
+            TokenKind::StringLiteral("\"a\"".to_string()),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+            TokenKind::EOF,
+        ];
+
+        let kinds: Vec<TokenKind> = tokens.iter().map(|x| x.kind.clone()).collect();
+        assert_eq!(kinds, expected_tokens);
+
+        let output_result = parser().parse(tokens);
+        assert!(output_result.is_ok());
+        let output = output_result.unwrap();
+        log::debug!("block expr: {:?}", output);
+        let expected_output = vec![TopLevel::Stmt(Stmt::LetStatement(LetExpression {
+            identifier: IdentifierType::Identifier("x".to_string(), None),
+            mutable: false,
+            value: Box::new(Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
+                name: "testFunc".to_string(),
+                args: vec![
+                    Expr::IntLiteral("0".to_string()),
+                    Expr::IntLiteral("1".to_string()),
+                    Expr::StringLiteral("\"a\"".to_string()),
+                ],
+            })])),
+        }))];
+
+        assert_eq!(output, expected_output);
+    }
+
+    #[test]
+    fn type_definitions() {
+        setup();
+        {
+            let input = "
+type Testing = {x: int; y: int}
+type TestRecord = {
+	TestVal: []*int
+	AnotherTest: {
+		InteriorTest: string
+	}
+}
+";
+
+            let token_result = lexer::lex_raw(input);
+            assert!(token_result.is_ok());
+            let tokens = token_result.unwrap();
+            let kinds = map_kinds(&tokens);
+            let expected_tokens = vec![
+                TokenKind::TypeKeyword,
+                TokenKind::Identifier("Testing".to_string()),
+                TokenKind::Assign,
+                TokenKind::LBrace,
+                TokenKind::Identifier("x".to_string()),
+                TokenKind::Colon,
+                TokenKind::Identifier("int".to_string()),
+                TokenKind::SemiColon,
+                TokenKind::Identifier("y".to_string()),
+                TokenKind::Colon,
+                TokenKind::Identifier("int".to_string()),
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::TypeKeyword,
+                TokenKind::Identifier("TestRecord".to_string()),
+                TokenKind::Assign,
+                TokenKind::LBrace,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::Identifier("TestVal".to_string()),
+                TokenKind::Colon,
+                TokenKind::LBracket,
+                TokenKind::RBracket,
+                TokenKind::Deref,
+                TokenKind::Identifier("int".to_string()),
+                TokenKind::NewLine,
+                TokenKind::Identifier("AnotherTest".to_string()),
+                TokenKind::Colon,
+                TokenKind::LBrace,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::Identifier("InteriorTest".to_string()),
+                TokenKind::Colon,
+                TokenKind::Identifier("string".to_string()),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::EOF,
+            ];
+            assert_eq!(kinds, expected_tokens);
+            let output_result = parser().parse(tokens);
+            let _ = output_result
+                .as_ref()
+                .map_err(|x| x.iter().for_each(error_report));
+            assert!(output_result.is_ok());
+            let output = output_result.unwrap();
+        }
+        {
+            let input = "
+type TestTuple = (int, string, TestRecord)
+";
+            let token_result = lexer::lex_raw(input);
+            assert!(token_result.is_ok());
+            let tokens = token_result.unwrap();
+            let kinds = map_kinds(&tokens);
+            let expected_tokens = vec![
+                TokenKind::TypeKeyword,
+                TokenKind::Identifier("TestTuple".to_string()),
+                TokenKind::Assign,
+                TokenKind::LParen,
+                TokenKind::Identifier("int".to_string()),
+                TokenKind::Comma,
+                TokenKind::Identifier("string".to_string()),
+                TokenKind::Comma,
+                TokenKind::Identifier("TestRecord".to_string()),
+                TokenKind::RParen,
+                TokenKind::NewLine,
+                TokenKind::EOF,
+            ];
+            assert_eq!(kinds, expected_tokens);
+        }
+        {
+            let input = "
+type TestADT =
+	| Test
+	| Testing of string
+";
+            let token_result = lexer::lex_raw(input);
+            assert!(token_result.is_ok());
+            let tokens = token_result.unwrap();
+            let kinds = map_kinds(&tokens);
+            let expected_tokens = vec![
+                TokenKind::TypeKeyword,
+                TokenKind::Identifier("TestADT".to_string()),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::Pipe,
+                TokenKind::Identifier("Test".to_string()),
+                TokenKind::NewLine,
+                TokenKind::Pipe,
+                TokenKind::Identifier("Testing".to_string()),
+                TokenKind::Of,
+                TokenKind::Identifier("string".to_string()),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::EOF,
+            ];
+            assert_eq!(kinds, expected_tokens);
+        }
     }
 }
