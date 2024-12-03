@@ -67,6 +67,8 @@ pub enum TokenKind {
     RBracket,
     #[token(":")]
     Colon,
+    #[token(";")]
+    SemiColon,
     #[token("(")]
     LParen,
     #[token(")")]

@@ -83,6 +83,10 @@ fn colon() -> impl Parser<Token, Token, Error = Simple<Token>> {
     token(TokenKind::Colon).labelled("Colon")
 }
 
+fn semicolon() -> impl Parser<Token, (), Error = Simple<Token>> {
+    token(TokenKind::SemiColon).labelled("Semicolon").ignored()
+}
+
 fn assign() -> impl Parser<Token, (), Error = Simple<Token>> {
     token(TokenKind::Assign).labelled("Assign").ignored()
 }
