@@ -275,10 +275,10 @@ fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    token(TokenKind::Pipe)
-        .ignore_then(
-            ident_token()
-                .then(
+    choice((
+        token(TokenKind::Pipe)
+            .ignore_then(
+                ident_token().then(
                     token(TokenKind::Of)
                         .boxed()
                         .ignore_then(choice((
@@ -287,13 +287,29 @@ fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
                             type_literal(),
                         )))
                         .or_not(),
-                )
-                .map(|(name, type_)| (name, type_)),
-        )
-        .repeated()
-        .delimited_by(indent().boxed(), dedent().boxed())
-        .map(|x| TypeDef::VariantDefinition { fields: x })
-        .labelled("Variant Definition")
+                ),
+            )
+            .separated_by(newline())
+            .delimited_by(indent().boxed(), dedent().boxed()),
+        token(TokenKind::Pipe)
+            .ignore_then(
+                ident_token().then(
+                    token(TokenKind::Of)
+                        .boxed()
+                        .ignore_then(choice((
+                            record_definition(),
+                            tuple_definition(),
+                            type_literal(),
+                        )))
+                        .or_not(),
+                ),
+            )
+            .repeated()
+            .at_least(1)
+            .then_ignore(newline()),
+    ))
+    .map(|x| TypeDef::VariantDefinition { fields: x })
+    .labelled("Variant Definition")
 }
 
 fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
@@ -677,9 +693,9 @@ mod test {
 
     fn setup() {
         INIT.call_once(|| {
-            env_logger::builder()
+            let _ = env_logger::builder()
                 .filter_level(log::LevelFilter::Debug)
-                .init();
+                .try_init();
         })
     }
 
@@ -716,15 +732,7 @@ y
             TokenKind::Dedent,
             TokenKind::EOF,
         ];
-        assert_eq!(
-            tokens
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|x| x.kind.clone())
-                .collect::<Vec<TokenKind>>(),
-            expected_tokens
-        );
+        assert_eq!(map_kinds(&tokens.as_ref().unwrap()), expected_tokens);
 
         tokens
             .as_ref()
@@ -795,10 +803,7 @@ testCall
         let tokens_result = lexer::lex_raw(input);
         assert!(tokens_result.is_ok());
         let tokens = tokens_result.unwrap();
-        let kinds = tokens
-            .iter()
-            .map(|x| x.kind.clone())
-            .collect::<Vec<TokenKind>>();
+        let kinds = map_kinds(&tokens);
         assert_eq!(kinds, expected_tokens);
 
         let output_result = parser().parse(tokens);
@@ -855,7 +860,7 @@ let x =
             TokenKind::EOF,
         ];
 
-        let kinds: Vec<TokenKind> = tokens.iter().map(|x| x.kind.clone()).collect();
+        let kinds: Vec<TokenKind> = map_kinds(&tokens);
         assert_eq!(kinds, expected_tokens);
 
         let output_result = parser().parse(tokens);
