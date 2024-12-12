@@ -1,9 +1,6 @@
 use super::ast::*;
 use super::lexer::{Token, TokenKind};
-use ariadne::Label;
-use ariadne::Report;
-use ariadne::ReportKind;
-use ariadne::Source;
+use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::prelude::*;
 
 fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
@@ -35,18 +32,34 @@ fn newline<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
         .boxed()
 }
 
-fn indent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    (newline().or_not())
-        .ignore_then(token(TokenKind::Indent))
-        .ignored()
-        .labelled("Indent")
+fn indent<'a>(ignore_newline: bool) -> BoxedParser<'a, Token, (), Simple<Token>> {
+    if ignore_newline {
+        token(TokenKind::Indent)
+            .ignored()
+            .labelled("Indent")
+            .boxed()
+    } else {
+        (newline().or_not())
+            .ignore_then(token(TokenKind::Indent))
+            .ignored()
+            .labelled("Indent")
+            .boxed()
+    }
 }
 
-fn dedent() -> impl Parser<Token, (), Error = Simple<Token>> {
-    (newline().or_not())
-        .ignore_then(token(TokenKind::Dedent))
-        .ignored()
-        .labelled("Dedent")
+fn dedent<'a>(ignore_newline: bool) -> BoxedParser<'a, Token, (), Simple<Token>> {
+    if ignore_newline {
+        token(TokenKind::Dedent)
+            .ignored()
+            .labelled("Dedent")
+            .boxed()
+    } else {
+        (newline().or_not())
+            .ignore_then(token(TokenKind::Dedent))
+            .ignored()
+            .labelled("Dedent")
+            .boxed()
+    }
 }
 
 fn comma() -> impl Parser<Token, Token, Error = Simple<Token>> {
@@ -216,20 +229,20 @@ fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     let newline = newline().boxed();
     recursive(move |r| {
-        (indent().or_not())
+        (indent(false).or_not())
             .ignore_then(lbrace())
             .ignore_then(
                 choice((
                     newline
                         .clone()
-                        .ignore_then(indent())
+                        .ignore_then(indent(true))
                         .ignore_then(
                             ident()
                                 .then_ignore(colon())
                                 .then(type_literal().or(r.clone().boxed()))
                                 .separated_by(newline.clone()),
                         )
-                        .then_ignore(dedent().or_not()),
+                        .then_ignore(dedent(false).or_not()),
                     ident()
                         .then_ignore(colon())
                         .then(type_literal().or(r.clone().boxed()))
@@ -238,7 +251,7 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
                 .boxed(),
             )
             .then_ignore(rbrace())
-            .then_ignore(dedent().or_not())
+            .then_ignore(choice((newline, dedent(false))).or_not())
             .map(|x| RecordDefinition {
                 fields: x
                     .into_iter()
@@ -258,41 +271,76 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 
 fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     recursive(move |t| {
-        lparen()
-            .ignore_then(
-                choice((type_literal(), record_definition(), t.clone()))
-                    .separated_by(comma().ignored())
-                    .map(|x| TypeDef::TupleDefinition {
-                        length: x.len(),
-                        types: x,
-                    }),
-            )
-            .then_ignore(rparen())
-            .labelled("Tuple Definition")
+        choice((
+            lparen()
+                .ignore_then(
+                    choice((type_literal(), record_definition(), t.clone()))
+                        .separated_by(comma().ignored())
+                        .map(|x| TypeDef::TupleDefinition {
+                            length: x.len(),
+                            types: x,
+                        }),
+                )
+                .then_ignore(rparen())
+                .then_ignore(newline().or_not()),
+            indent(true).ignore_then(
+                lparen()
+                    .ignore_then(
+                        choice((type_literal(), record_definition(), t.clone()))
+                            .separated_by(
+                                (comma().then(newline()).ignored())
+                                    .or(newline().then(comma()).ignored()),
+                            )
+                            .map(|x| TypeDef::TupleDefinition {
+                                length: x.len(),
+                                types: x,
+                            }),
+                    )
+                    .then_ignore(rparen())
+                    .then_ignore(dedent(true)),
+            ),
+        ))
+        .labelled("Tuple Definition")
     })
 }
 
 fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     choice((
-        (token(TokenKind::Pipe).ignore_then(
-            ident_token().then(
-                token(TokenKind::Of)
-                    .boxed()
-                    .ignore_then(choice((
-                        record_definition(),
-                        tuple_definition(),
-                        type_literal(),
-                    )))
-                    .or_not(),
-            ),
-        ))
-        .separated_by(newline())
-        .delimited_by(indent().boxed(), dedent().boxed()),
+        indent(false)
+            .ignore_then(
+                token(TokenKind::Pipe)
+                    .ignore_then(ident_token())
+                    .then(
+                        token(TokenKind::Of)
+                            .ignore_then(choice((
+                                record_definition(),
+                                tuple_definition(),
+                                type_literal(),
+                            )))
+                            .or_not(),
+                    )
+                    .then_ignore(newline())
+                    .map(|x| {
+                        log::debug!("Inside the indented variant type thingo");
+                        x
+                    })
+                    .repeated()
+                    .at_least(1),
+            )
+            .map(|x| {
+                log::debug!("Passed from variant, now checking dedent");
+                x
+            })
+            .then_ignore(dedent(true))
+            .debug("Something in here?")
+            .map(|x| {
+                log::debug!("We have found the dedent");
+                x
+            }),
         token(TokenKind::Pipe)
             .ignore_then(
                 ident_token().then(
                     token(TokenKind::Of)
-                        .boxed()
                         .ignore_then(choice((
                             record_definition(),
                             tuple_definition(),
@@ -302,15 +350,21 @@ fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
                 ),
             )
             .repeated()
-            .at_least(1)
-            .then_ignore(newline()),
+            .at_least(1),
     ))
-    .map(|x| TypeDef::VariantDefinition { fields: x })
+    .map(|x| {
+        log::debug!("Variant has been built");
+        TypeDef::VariantDefinition { fields: x }
+    })
     .labelled("Variant Definition")
 }
 
 fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     token(TokenKind::TypeKeyword)
+        .map(|x| {
+            log::debug!("Found type keyword");
+            x
+        })
         .ignore_then(ident_token())
         .then_ignore(assign())
         .then(choice((
@@ -319,7 +373,6 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             variant_definition(),
             type_literal(),
         )))
-        .then_ignore(newline())
         .map(|(value, t_)| Stmt::TypeDefinition(value, t_))
         .labelled("Type Definition")
 }
@@ -358,9 +411,9 @@ fn expr<'a>(
         })
         .labelled("Tuple Literal");
 
-        let block_expr = indent()
+        let block_expr = indent(false)
             .ignore_then(stmt.repeated())
-            .then_ignore(dedent())
+            .then_ignore(dedent(false))
             .map(|x| Expr::Block(x))
             .labelled("Block Expression");
 
@@ -404,9 +457,9 @@ fn expr<'a>(
 
         let func_call = ident_token()
             .then(choice((
-                indent()
+                indent(false)
                     .ignore_then(expr.clone().separated_by(newline()))
-                    .then_ignore(dedent()),
+                    .then_ignore(dedent(false)),
                 expr.clone()
                     .repeated()
                     .at_least(1)
@@ -449,8 +502,8 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     let type_literal = type_literal().boxed();
     let assign = assign().boxed();
     let type_ = type_definition().boxed();
-    let indent = indent().boxed();
-    let dedent = dedent().boxed();
+    let indent = indent(false).boxed();
+    let dedent = dedent(false).boxed();
 
     recursive(move |rstmt| {
         // Because the stmt and expr parsers are mutually recursive the expr parser needs to be
@@ -603,6 +656,10 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             type_.clone(),
             expr.clone().map(Stmt::Expr),
         ))
+        .map(|x| {
+            log::debug!("Finished stmt");
+            x
+        })
         .padded_by(token(TokenKind::Comment).or_not().ignored())
         .labelled("Statement")
     })
@@ -658,16 +715,18 @@ pub fn error_report(err: &Simple<Token>) {
 
         let mut colors = ariadne::ColorGenerator::new();
         let a = colors.next();
-        let first = span.start;
-        let second = span.end;
-        let first_i = first as isize;
-        let second_i = second as isize;
-        let mapped_span =
-            (std::cmp::max(first_i - 50, 0) as usize)..(std::cmp::max(second_i + 50, 0) as usize);
-        Report::build(ReportKind::Error, (file.clone(), mapped_span))
+        // let first = span.start;
+        // let second = span.end;
+        // let first_i = first as isize;
+        // let second_i = second as isize;
+        // let mapped_span =
+        //     (std::cmp::max(first_i - 50, 0) as usize)..(std::cmp::max(second_i + 50, 0) as usize);
+
+        let label = err.label().unwrap_or("");
+        Report::build(ReportKind::Error, (file.clone(), span.clone()))
             .with_code(1)
             .with_note("Unexpected Token")
-            .with_note(format!("Label: {:?}", err.label()))
+            .with_note(format!("Combinator Label: {:?}", label))
             .with_label(
                 Label::new((file.clone(), span.clone()))
                     .with_message(format!("Unexpected Token: {:?}", kind))
@@ -1031,12 +1090,17 @@ type TestADT =
 	| Test
 	| Testing of string
 
+let x = 1
+
 type Test2 = | Test | Testing of int
 ";
             let token_result = lexer::lex_raw(input);
             assert!(token_result.is_ok());
             let tokens = token_result.unwrap();
             let kinds = map_kinds(&tokens);
+            kinds.iter().for_each(|x| {
+                log::debug!("{:?}", x);
+            });
             let expected_tokens = vec![
                 TokenKind::TypeKeyword,
                 TokenKind::Identifier("TestADT".to_string()),
@@ -1052,6 +1116,11 @@ type Test2 = | Test | Testing of int
                 TokenKind::Identifier("string".to_string()),
                 TokenKind::NewLine,
                 TokenKind::Dedent,
+                TokenKind::Let,
+                TokenKind::Identifier("x".to_string()),
+                TokenKind::Assign,
+                TokenKind::NumberLiteral("1".to_string()),
+                TokenKind::NewLine,
                 TokenKind::TypeKeyword,
                 TokenKind::Identifier("Test2".to_string()),
                 TokenKind::Assign,
