@@ -3,118 +3,120 @@ use super::lexer::{Token, TokenKind};
 use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::prelude::*;
 
-fn token<'a>(kind: TokenKind) -> BoxedParser<'a, Token, Token, Simple<Token>> {
-    filter(move |token: &Token| token.kind == kind).boxed()
+fn token(kind: TokenKind, path: &str) -> BoxedParser<'_, Token, Token, Simple<Token>> {
+    filter(move |token: &Token| {
+        log::debug!(
+            "Inside {} matching token {:?} against {:?}",
+            path,
+            token.kind,
+            kind
+        );
+        token.kind == kind
+    })
+    .boxed()
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum StrValueType {
     String,
     Identifier,
     Number,
+    Operator,
 }
 
 fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Token>> {
-    filter_map(move |span, token: Token| match (t_, token.kind.clone()) {
-        (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
-        (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
-        (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
-        _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
+    filter_map(move |span, token: Token| {
+        log::debug!("Attempting to match {:?} as {:?}", token.kind, t_);
+        match (t_, token.kind.clone()) {
+            (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
+            (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
+            (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
+            (StrValueType::Operator, TokenKind::Operator(s)) => Ok(s),
+            _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
+        }
     })
     .labelled("Identifier")
     .boxed()
 }
 
-fn newline<'a>() -> BoxedParser<'a, Token, (), Simple<Token>> {
-    token(TokenKind::NewLine)
+fn newline<'a>(path: &'static str) -> BoxedParser<'a, Token, (), Simple<Token>> {
+    token(TokenKind::NewLine, path)
         .ignored()
         .labelled("Newline")
         .boxed()
 }
 
-fn indent<'a>(ignore_newline: bool) -> BoxedParser<'a, Token, (), Simple<Token>> {
-    if ignore_newline {
-        token(TokenKind::Indent)
-            .ignored()
-            .labelled("Indent")
-            .boxed()
-    } else {
-        (newline().or_not())
-            .ignore_then(token(TokenKind::Indent))
-            .ignored()
-            .labelled("Indent")
-            .boxed()
-    }
+fn indent<'a>(path: &'static str) -> BoxedParser<'a, Token, (), Simple<Token>> {
+    (newline(path).or_not())
+        .ignore_then(token(TokenKind::Indent, path))
+        .labelled("Indent")
+        .ignored()
+        .boxed()
 }
 
-fn dedent<'a>(ignore_newline: bool) -> BoxedParser<'a, Token, (), Simple<Token>> {
-    if ignore_newline {
-        token(TokenKind::Dedent)
-            .ignored()
-            .labelled("Dedent")
-            .boxed()
-    } else {
-        (newline().or_not())
-            .ignore_then(token(TokenKind::Dedent))
-            .ignored()
-            .labelled("Dedent")
-            .boxed()
-    }
+fn dedent<'a>(path: &'static str) -> BoxedParser<'a, Token, (), Simple<Token>> {
+    (newline(path).or_not())
+        .ignore_then(token(TokenKind::Dedent, path))
+        .labelled("Dedent")
+        .ignored()
+        .boxed()
 }
 
-fn comma() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::Comma).labelled("Comma")
+fn comma(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::Comma, path).labelled("Comma")
 }
 
-fn lbrace() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::LBrace).labelled("LBrace")
+fn lbrace(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::LBrace, path).labelled("LBrace")
 }
 
-fn rbrace() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::RBrace).labelled("RBrace")
+fn rbrace(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::RBrace, path).labelled("RBrace")
 }
 
-fn lbracket() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::LBracket).labelled("LBracket")
+fn lbracket(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::LBracket, path).labelled("LBracket")
 }
 
-fn rbracket() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::RBracket).labelled("RBracket")
+fn rbracket(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::RBracket, path).labelled("RBracket")
 }
 
-fn lparen() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::LParen).labelled("LParen")
+fn lparen(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::LParen, path).labelled("LParen")
 }
 
-fn rparen() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::RParen).labelled("RParen")
+fn rparen(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::RParen, path).labelled("RParen")
 }
 
-fn colon() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::Colon).labelled("Colon")
+fn colon(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::Colon, path).labelled("Colon")
 }
 
-fn semicolon() -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::SemiColon).labelled("Semicolon").ignored()
+fn semicolon(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
+    token(TokenKind::SemiColon, path)
+        .labelled("Semicolon")
+        .ignored()
 }
 
-fn assign() -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::Assign).labelled("Assign").ignored()
+fn assign(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
+    token(TokenKind::Assign, path).labelled("Assign").ignored()
 }
 
-fn unit() -> impl Parser<Token, (), Error = Simple<Token>> {
-    (lparen().then(rparen())).ignored().labelled("Unit")
+fn unit(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
+    (lparen(path).then(rparen(path))).ignored().labelled("Unit")
 }
 
-fn pointer() -> impl Parser<Token, bool, Error = Simple<Token>> {
-    token(TokenKind::Pointer)
+fn pointer(path: &'static str) -> impl Parser<Token, bool, Error = Simple<Token>> {
+    token(TokenKind::Pointer, path)
         .or_not()
         .map(|x| x.is_some())
         .labelled("Pointer")
 }
 
-fn import() -> impl Parser<Token, Token, Error = Simple<Token>> {
-    token(TokenKind::Import).labelled("import")
+fn import(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
+    token(TokenKind::Import, path).labelled("import")
 }
 
 fn ident_token() -> impl Parser<Token, String, Error = Simple<Token>> {
@@ -133,8 +135,8 @@ fn digit() -> impl Parser<Token, Expr, Error = Simple<Token>> {
         .labelled("Number Literal")
 }
 
-fn bool() -> impl Parser<Token, Expr, Error = Simple<Token>> {
-    choice((token(TokenKind::True), token(TokenKind::False)))
+fn bool(path: &'static str) -> impl Parser<Token, Expr, Error = Simple<Token>> {
+    choice((token(TokenKind::True, path), token(TokenKind::False, path)))
         .map(|Token { kind, .. }| match kind {
             TokenKind::True => true,
             TokenKind::False => false,
@@ -147,18 +149,18 @@ fn bool() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     let t = recursive(move |t| {
         choice((
-            unit().map(|_| Type::Unit),
-            token(TokenKind::Deref)
+            unit("Type literal").map(|_| Type::Unit),
+            token(TokenKind::Deref, "type literal")
                 .boxed()
                 .ignore_then(t.clone())
                 .map(|x| Type::Pointer(Box::new(x))),
-            lbracket()
-                .ignore_then(rbracket())
+            lbracket("Type literal")
+                .ignore_then(rbracket("Type literal"))
                 .ignore_then(t.clone())
                 .map(|x: Type| Type::Slice(Box::new(x))),
             ident_token()
                 .then(
-                    token(TokenKind::Dot)
+                    token(TokenKind::Dot, "Type literal")
                         .boxed()
                         .ignore_then(ident_token())
                         .map(|value| Type::Type {
@@ -188,33 +190,31 @@ fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
-    let base_ident = pointer()
+    let base_ident = pointer("Ident")
         .then(ident_token())
-        .map(|(is_pointer, s)| {
-            if is_pointer {
-                IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None)))
-            } else {
-                IdentifierType::Identifier(s, None)
-            }
+        .map(|(is_pointer, s)| match (is_pointer, s.as_str()) {
+            (false, "_") => IdentifierType::Bucket,
+            (true, _) => IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None))),
+            _ => IdentifierType::Identifier(s, None),
         })
         .labelled("Ident")
         .boxed();
 
     choice((
         base_ident.clone(),
-        lparen()
-            .ignore_then(pointer().then(ident_token()))
-            .then_ignore(colon())
+        lparen("Ident")
+            .ignore_then(pointer("Ident").then(ident_token()))
+            .then_ignore(colon("Ident"))
             .then(type_literal())
-            .then_ignore(rparen())
+            .then_ignore(rparen("Ident"))
             .map(|((is_pointer, s), t)| match t {
-                TypeDef::Type(t) => {
-                    if is_pointer {
+                TypeDef::Type(t) => match (is_pointer, s.as_str()) {
+                    (false, "_") => IdentifierType::Bucket,
+                    (true, _) => {
                         IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, Some(t))))
-                    } else {
-                        IdentifierType::Identifier(s, Some(t))
                     }
-                }
+                    _ => IdentifierType::Identifier(s, Some(t)),
+                },
                 _ => panic!("Expected type in typed identifier"),
             })
             .labelled("Typed_Ident"),
@@ -227,31 +227,32 @@ fn ident_node() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 }
 
 fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    let newline = newline().boxed();
+    let newline = newline("Record Definition").boxed();
     recursive(move |r| {
-        (indent(false).or_not())
-            .ignore_then(lbrace())
+        indent("Record Definition")
+            .or_not()
+            .ignore_then(lbrace("Record Definition"))
             .ignore_then(
                 choice((
                     newline
                         .clone()
-                        .ignore_then(indent(true))
+                        .ignore_then(indent("Record Definition"))
                         .ignore_then(
                             ident()
-                                .then_ignore(colon())
+                                .then_ignore(colon("Record Definition"))
                                 .then(type_literal().or(r.clone().boxed()))
                                 .separated_by(newline.clone()),
                         )
-                        .then_ignore(dedent(false).or_not()),
+                        .then_ignore(dedent("Record Definition").or_not()),
                     ident()
-                        .then_ignore(colon())
+                        .then_ignore(colon("Record Definition"))
                         .then(type_literal().or(r.clone().boxed()))
-                        .separated_by(semicolon()),
+                        .separated_by(semicolon("Record Definition")),
                 ))
                 .boxed(),
             )
-            .then_ignore(rbrace())
-            .then_ignore(choice((newline, dedent(false))).or_not())
+            .then_ignore(rbrace("Record Definition"))
+            .then_ignore(choice((newline, dedent("Record Definition"))).or_not())
             .map(|x| RecordDefinition {
                 fields: x
                     .into_iter()
@@ -272,32 +273,36 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
     recursive(move |t| {
         choice((
-            lparen()
+            lparen("Tuple Definition")
                 .ignore_then(
                     choice((type_literal(), record_definition(), t.clone()))
-                        .separated_by(comma().ignored())
+                        .separated_by(comma("Tuple Definition").ignored())
                         .map(|x| TypeDef::TupleDefinition {
                             length: x.len(),
                             types: x,
                         }),
                 )
-                .then_ignore(rparen())
-                .then_ignore(newline().or_not()),
-            indent(true).ignore_then(
-                lparen()
+                .then_ignore(rparen("Tuple Definition"))
+                .then_ignore(newline("Tuple Definition").or_not()),
+            indent("Tuple Definition").ignore_then(
+                lparen("Tuple Definition")
                     .ignore_then(
                         choice((type_literal(), record_definition(), t.clone()))
                             .separated_by(
-                                (comma().then(newline()).ignored())
-                                    .or(newline().then(comma()).ignored()),
+                                (comma("Tuple Definition")
+                                    .then(newline("Tuple Definition"))
+                                    .ignored())
+                                .or(newline("Tuple Definition")
+                                    .then(comma("Tuple Definition"))
+                                    .ignored()),
                             )
                             .map(|x| TypeDef::TupleDefinition {
                                 length: x.len(),
                                 types: x,
                             }),
                     )
-                    .then_ignore(rparen())
-                    .then_ignore(dedent(true)),
+                    .then_ignore(rparen("Tuple Definition"))
+                    .then_ignore(dedent("Tuple Definition")),
             ),
         ))
         .labelled("Tuple Definition")
@@ -305,68 +310,34 @@ fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
+    let variant_case = token(TokenKind::op("|"), "Variant Definition")
+        .ignore_then(ident_token())
+        .then(
+            token(TokenKind::Of, "Variant Definition")
+                .ignore_then(type_literal())
+                .or_not(),
+        )
+        .boxed();
+
     choice((
-        indent(false)
+        indent("Variant Definition")
             .ignore_then(
-                token(TokenKind::Pipe)
-                    .ignore_then(ident_token())
-                    .then(
-                        token(TokenKind::Of)
-                            .ignore_then(choice((
-                                record_definition(),
-                                tuple_definition(),
-                                type_literal(),
-                            )))
-                            .or_not(),
-                    )
-                    .then_ignore(newline())
-                    .map(|x| {
-                        log::debug!("Inside the indented variant type thingo");
-                        x
-                    })
+                variant_case
+                    .clone()
+                    .then_ignore(newline("Variant Definition"))
                     .repeated()
                     .at_least(1),
             )
-            .map(|x| {
-                log::debug!("Passed from variant, now checking dedent");
-                x
-            })
-            .then_ignore(dedent(true))
-            .debug("Something in here?")
-            .map(|x| {
-                log::debug!("We have found the dedent");
-                x
-            }),
-        token(TokenKind::Pipe)
-            .ignore_then(
-                ident_token().then(
-                    token(TokenKind::Of)
-                        .ignore_then(choice((
-                            record_definition(),
-                            tuple_definition(),
-                            type_literal(),
-                        )))
-                        .or_not(),
-                ),
-            )
-            .repeated()
-            .at_least(1),
+            .then_ignore(dedent("Variant Definition")),
+        variant_case.repeated().at_least(1),
     ))
-    .map(|x| {
-        log::debug!("Variant has been built");
-        TypeDef::VariantDefinition { fields: x }
-    })
-    .labelled("Variant Definition")
+    .map(|x| TypeDef::VariantDefinition { fields: x })
 }
 
 fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
-    token(TokenKind::TypeKeyword)
-        .map(|x| {
-            log::debug!("Found type keyword");
-            x
-        })
+    token(TokenKind::TypeKeyword, "Type Definition")
         .ignore_then(ident_token())
-        .then_ignore(assign())
+        .then_ignore(assign("Type Definition"))
         .then(choice((
             record_definition(),
             tuple_definition(),
@@ -377,20 +348,45 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         .labelled("Type Definition")
 }
 
+fn match_parser<'a>(
+    expr: BoxedParser<'a, Token, Expr, Simple<Token>>,
+) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
+    token(TokenKind::Match, "Match Expression")
+        .map(|_| Expr::Identifier(IdentifierType::Bucket))
+        .boxed()
+}
+
 fn expr<'a>(
     stmt: BoxedParser<'a, Token, Stmt, Simple<Token>>,
 ) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
-    recursive(move |expr| {
-        let array_literal = (expr.clone().separated_by(comma().boxed()))
-            .delimited_by(lbracket().boxed(), rbracket().boxed())
-            .map(|x| Expr::ArrayLiteral(x))
-            .labelled("Array Literal");
+    let inner_expr = recursive(move |expr| {
+        let match_parser = match_parser(expr.clone().boxed());
+        let array_literal = (expr.clone().separated_by(
+            semicolon("Array Literal")
+                .or(newline("Array Literal"))
+                .boxed(),
+        ))
+        .delimited_by(
+            lbracket("Array Literal")
+                .then_ignore(indent("Array Literal").or_not())
+                .boxed(),
+            dedent("Array Literal Multi")
+                .or_not()
+                .ignore_then(rbracket("Array Literal"))
+                .boxed(),
+        )
+        .map(|x| Expr::ArrayLiteral(x))
+        .labelled("Array Literal Single");
 
-        let record_literal = (ident_token().boxed())
-            .then_ignore(assign().boxed())
+        let record_literal_single_line = (ident_token().boxed())
+            .then_ignore(assign("Record Literal Single Line").boxed())
             .then(expr.clone())
-            .separated_by(comma().boxed())
-            .delimited_by(lbrace().boxed(), rbrace().boxed())
+            .separated_by(semicolon("Record Literal Single Line").boxed())
+            .at_least(1)
+            .delimited_by(
+                lbrace("Record Literal Single Line").boxed(),
+                rbrace("Record Literal Single Line").boxed(),
+            )
             .map(|x: Vec<(String, Expr)>| Expr::RecordLiteral {
                 fields: x
                     .into_iter()
@@ -399,11 +395,40 @@ fn expr<'a>(
             })
             .labelled("Record Literal");
 
-        let tuple_literal = ((expr.clone().then_ignore(comma()))
-            .then(expr.clone().separated_by(comma()))
-            .boxed())
-        .delimited_by(lparen().boxed(), rparen().boxed())
-        .map(|(first, rest): (Expr, Vec<Expr>)| {
+        let record_literal_multiline = (indent("Record Literal Multi Line").or_not())
+            .ignore_then(
+                ident_token()
+                    .boxed()
+                    .then_ignore(assign("Record Literal Multi Line"))
+                    .then(expr.clone())
+                    .separated_by(
+                        newline("Record Literal Multi Line")
+                            .or(semicolon("Record Literal Multi Line")),
+                    )
+                    .at_least(1),
+            )
+            .then_ignore(dedent("Record Literal Multi Line"))
+            .delimited_by(
+                lbrace("Record Literal Multi Line").boxed(),
+                rbrace("Record Literal Multi Line").boxed(),
+            )
+            .map(|x: Vec<(String, Expr)>| Expr::RecordLiteral {
+                fields: x
+                    .into_iter()
+                    .map(|(name, value)| RecordField { name, value })
+                    .collect(),
+            })
+            .labelled("Record Literal");
+
+        let record_literal = record_literal_single_line.or(record_literal_multiline);
+
+        let tuple_literal = ((expr.clone().then_ignore(comma("Tuple Literal")))
+            .then(expr.clone().separated_by(comma("Tuple Literal"))))
+        .delimited_by(
+            lparen("Tuple Literal").boxed(),
+            rparen("Tuple Literal").boxed(),
+        )
+        .map(|(first, rest)| {
             let mut v = Vec::with_capacity(rest.len() + 1);
             v.push(first);
             v.extend(rest);
@@ -411,33 +436,41 @@ fn expr<'a>(
         })
         .labelled("Tuple Literal");
 
-        let block_expr = indent(false)
-            .ignore_then(stmt.repeated())
-            .then_ignore(dedent(false))
+        let block_expr = indent("Block Expr")
+            .ignore_then(stmt.repeated().at_least(1))
+            .then_ignore(dedent("Block Expr"))
             .map(|x| Expr::Block(x))
             .labelled("Block Expression");
 
-        let paren_expression = lparen()
+        let paren_expression = lparen("Paren Expression")
             .ignore_then(expr.clone())
-            .then_ignore(rparen())
+            .then_ignore(rparen("Paren Expression"))
             .boxed()
             .labelled("Paren Expression");
 
         let atom = choice((
             array_literal.clone().boxed(),
-            record_literal.clone().boxed(),
-            tuple_literal.clone().boxed(),
+            record_literal.boxed(),
+            tuple_literal.boxed(),
             ident_node().boxed(),
+            str_().boxed(),
+            digit().boxed(),
+            bool("atom").boxed(),
+            unit("atom")
+                .map(|_| Expr::Identifier(IdentifierType::Unit))
+                .boxed(),
             paren_expression.clone(),
         ))
         .labelled("Atom");
 
-        let base_expr = atom
+        let chain_expr = atom
             .clone()
             .then(
-                (token(TokenKind::Dot).boxed().ignore_then(atom))
-                    .repeated()
-                    .or_not(),
+                (token(TokenKind::Dot, "Chain Expr")
+                    .boxed()
+                    .ignore_then(atom.clone()))
+                .repeated()
+                .or_not(),
             )
             .map(|(first, chain)| match chain {
                 None => first,
@@ -453,37 +486,56 @@ fn expr<'a>(
                     })
                 }
             })
-            .labelled("Base Expr");
+            .labelled("Base Expr")
+            .boxed();
 
         let func_call = ident_token()
             .then(choice((
-                indent(false)
-                    .ignore_then(expr.clone().separated_by(newline()))
-                    .then_ignore(dedent(false)),
+                indent("Func Call")
+                    .ignore_then(expr.clone().separated_by(newline("Func Call")))
+                    .then_ignore(dedent("Func Call")),
                 expr.clone()
                     .repeated()
                     .at_least(1)
-                    .then_ignore(newline())
+                    .then_ignore(newline("Func Call"))
                     .boxed(),
             )))
             .map(|(name, args)| Expr::FunctionCall { name, args })
             .labelled("Function Call");
 
-        choice([
-            func_call.boxed(),
-            base_expr.boxed(),
-            digit().boxed(),
-            str_().boxed(),
-            bool().boxed(),
-            unit()
-                .map(|_| Expr::Identifier(IdentifierType::Unit))
-                .boxed(),
-            block_expr.boxed(),
-        ])
-        .labelled("Expression")
-        .padded_by(token(TokenKind::Comment).or_not().ignored())
+        choice((block_expr.boxed(), func_call.boxed(), chain_expr, atom))
+            .labelled("Expression")
+            .padded_by(token(TokenKind::Comment, "Expr").or_not().ignored())
     })
-    .labelled("Expression")
+    .labelled("Expression");
+
+    recursive(|binary| {
+        inner_expr
+            .clone()
+            .then(
+                choice((
+                    (identifier(StrValueType::Operator)
+                        .or(token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string()))
+                        .then(
+                            (newline("Binary Expr").or_not())
+                                .ignore_then(binary.clone().or(inner_expr.clone())),
+                        )),
+                    (newline("Binary Expr").ignore_then(
+                        identifier(StrValueType::Operator)
+                            .or(token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string()))
+                            .then(binary.clone().or(inner_expr.clone())),
+                    )),
+                ))
+                .or_not(),
+            )
+            .map(|(left, is_op)| match is_op {
+                Some((op, right)) => Expr::FunctionCall {
+                    name: op,
+                    args: vec![left, right],
+                },
+                None => left,
+            })
+    })
     .boxed()
 }
 
@@ -492,20 +544,20 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     let ident = ident().boxed();
     let ident_node = ident_node().map(Stmt::Expr).boxed();
     let ident_token = ident_token().boxed();
-    let comma = comma().boxed();
-    let lbrace = lbrace().boxed();
-    let rbrace = rbrace().boxed();
-    let lparen = lparen().boxed();
-    let rparen = rparen().boxed();
-    let lbracket = lbracket().boxed();
-    let rbracket = rbracket().boxed();
+    let comma = comma("Stmt").boxed();
+    let lbrace = lbrace("Stmt").boxed();
+    let rbrace = rbrace("Stmt").boxed();
+    let lparen = lparen("Stmt").boxed();
+    let rparen = rparen("Stmt").boxed();
+    let lbracket = lbracket("Stmt").boxed();
+    let rbracket = rbracket("Stmt").boxed();
     let type_literal = type_literal().boxed();
-    let assign = assign().boxed();
+    let assign = assign("Stmt").boxed();
     let type_ = type_definition().boxed();
-    let indent = indent(false).boxed();
-    let dedent = dedent(false).boxed();
 
     recursive(move |rstmt| {
+        log::debug!("Processing next token in stmt parser");
+
         // Because the stmt and expr parsers are mutually recursive the expr parser needs to be
         // instantiated here with the recurst stmt parser
         let expr = expr(rstmt.clone().boxed()).boxed();
@@ -542,7 +594,7 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         let typed_ident = lparen
             .clone()
             .ignore_then(ident_types.clone())
-            .then_ignore(token(TokenKind::Colon).boxed())
+            .then_ignore(token(TokenKind::Colon, "Typed Ident").boxed())
             .then(type_literal.clone())
             .then_ignore(rparen.clone())
             .map(|(node, def)| match node {
@@ -570,55 +622,42 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         let let_identifier = choice((typed_ident.clone(), ident_types.clone())).boxed();
 
         let let_stmt = ({
-            let val = token(TokenKind::Mut)
+            let val = token(TokenKind::Mut, "Let Stmt")
                 .or_not()
                 .map(|x| x.is_some())
                 .then(let_identifier)
                 .then_ignore(assign.clone())
-                .then(choice((
-                    rstmt
-                        .clone()
-                        .repeated()
-                        .delimited_by(ident.clone(), dedent.clone())
-                        .map(|x| Expr::Block(x)),
-                    expr.clone(),
-                )))
+                .then(expr.clone())
                 .map(|((mutable, name), value)| {
                     let identifier = match name {
                         Stmt::Expr(Expr::Identifier(n)) => n,
                         _ => panic!(),
                     };
-                    Stmt::LetStatement(LetExpression {
+                    Stmt::LetStatement {
                         identifier,
-                        value: Box::new(value),
+                        value,
                         mutable,
-                    })
+                    }
                 })
                 .labelled("Let value")
                 .boxed();
 
-            let func = {
-                let exprs = choice((
-                    indent
-                        .clone()
-                        .ignore_then(rstmt.clone().repeated())
-                        .then_ignore(dedent.clone())
-                        .boxed(),
-                    expr.clone().map(|x| vec![Stmt::Expr(x)]).boxed(),
-                ))
-                .labelled("Function Body")
-                .boxed();
+            let func_definition = {
+                let exprs = expr.clone().labelled("Function Body").boxed();
 
                 let idents = ident_token
                     .clone()
-                    .then(choice((
-                        (unit().boxed().map(|_| vec![])),
-                        (ident.clone().repeated()).boxed(),
-                    )))
+                    .then(
+                        (ident
+                            .clone()
+                            .or(unit("Func Def").map(|_| IdentifierType::Unit)))
+                        .repeated()
+                        .at_least(1),
+                    )
                     .labelled("Function Arguments")
                     .boxed();
 
-                let return_type = colon()
+                let return_type = colon("Return Type")
                     .ignore_then(type_literal.clone())
                     .or_not()
                     .labelled("Return Type")
@@ -626,10 +665,11 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
 
                 idents
                     .then(return_type)
-                    .then(assign.clone().ignored())
+                    .then_ignore(assign.clone())
                     .then(exprs)
-                    .map(|((((name, args), return_), _), body)| {
-                        Stmt::FunctionDefinition(FunctionDefinition {
+                    .map(|(((name, args), return_), body)| {
+                        log::debug!("Parsing function {}\n{:?}\n{:?}", name, args, body);
+                        Stmt::FunctionDefinition {
                             name: Some(name),
                             return_type: match return_ {
                                 Some(t) => match t {
@@ -640,12 +680,12 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
                             },
                             arguments: args,
                             body,
-                        })
+                        }
                     })
                     .boxed()
             };
-            token(TokenKind::Let)
-                .ignore_then(choice((val, func)))
+            token(TokenKind::Let, "Let Stmt")
+                .ignore_then(func_definition.or(val))
                 .boxed()
         })
         .labelled("Let Stmt")
@@ -657,16 +697,20 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             expr.clone().map(Stmt::Expr),
         ))
         .map(|x| {
-            log::debug!("Finished stmt");
+            log::debug!("Parsed Statement {:?}", x);
             x
         })
-        .padded_by(token(TokenKind::Comment).or_not().ignored())
+        .padded_by(token(TokenKind::Comment, "Stmt").or_not().ignored())
+        .padded_by(newline("Stmt").or_not().ignored())
         .labelled("Statement")
     })
 }
 
 fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    (import().ignore_then(str_()).then_ignore(newline())).map(|s| match s {
+    (import("Go Import")
+        .ignore_then(str_())
+        .then_ignore(newline("Go Import")))
+    .map(|s| match s {
         Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
             module: value,
             alias: None,
@@ -676,9 +720,9 @@ fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
 }
 
 fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
-    import()
+    import("Import")
         .ignore_then(ident_token())
-        .then_ignore(newline())
+        .then_ignore(newline("Import"))
         .map(|s| {
             return TopLevel::FungoImport(FungoImport { module: s });
         })
@@ -689,16 +733,15 @@ pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
     let fungo_import = fungo_import();
     let stmt = stmt().boxed();
     let top_level_stmt = choice((
+        stmt.map(TopLevel::Stmt).boxed(),
         go_import.boxed(),
         fungo_import.boxed(),
-        stmt.map(TopLevel::Stmt).boxed(),
     ))
-    .padded_by(token(TokenKind::Comment).or_not());
+    .padded_by(newline("Top Level").or_not())
+    .recover_with(skip_then_retry_until([]))
+    .debug("Post top-level statement");
 
-    top_level_stmt
-        .repeated()
-        .then_ignore(token(TokenKind::EOF))
-        .then_ignore(end())
+    top_level_stmt.repeated().at_least(1)
 }
 
 pub fn error_report(err: &Simple<Token>) {
@@ -715,12 +758,6 @@ pub fn error_report(err: &Simple<Token>) {
 
         let mut colors = ariadne::ColorGenerator::new();
         let a = colors.next();
-        // let first = span.start;
-        // let second = span.end;
-        // let first_i = first as isize;
-        // let second_i = second as isize;
-        // let mapped_span =
-        //     (std::cmp::max(first_i - 50, 0) as usize)..(std::cmp::max(second_i + 50, 0) as usize);
 
         let label = err.label().unwrap_or("");
         Report::build(ReportKind::Error, (file.clone(), span.clone()))
@@ -742,16 +779,15 @@ pub fn error_report(err: &Simple<Token>) {
 
 #[cfg(test)]
 mod test {
-    use super::super::lexer;
     use super::*;
-    use std::sync::Once;
-    static INIT: Once = Once::new();
+    use crate::lexer;
+    use colored::*;
+    use serde_json;
+    static INIT: std::sync::Once = std::sync::Once::new();
 
-    fn setup() {
+    fn setup(level: log::LevelFilter) {
         INIT.call_once(|| {
-            let _ = env_logger::builder()
-                .filter_level(log::LevelFilter::Debug)
-                .try_init();
+            let _ = env_logger::builder().filter_level(level).try_init();
         })
     }
 
@@ -759,9 +795,43 @@ mod test {
         tokens.iter().map(|x| x.kind.clone()).collect()
     }
 
+    fn lex_input(input: &str, expected: Vec<TokenKind>) -> Vec<Token> {
+        let token_result = lexer::lex_raw(input);
+        assert!(token_result.is_ok());
+        let tokens = token_result.unwrap();
+        let kinds = map_kinds(&tokens);
+        assert_eq!(
+            kinds,
+            expected,
+            "\nGot: {}\nExpected: {}\n",
+            serde_json::to_string_pretty(&kinds).unwrap().red(),
+            serde_json::to_string_pretty(&expected).unwrap().cyan()
+        );
+        tokens
+    }
+
+    fn parse_input(input: Vec<Token>) -> Vec<TopLevel> {
+        let output_result = parser()
+            .parse(input)
+            .inspect_err(|errs| errs.iter().for_each(|e| error_report(e)));
+        assert!(output_result.is_ok());
+        output_result.unwrap()
+    }
+
+    fn match_output(tokens: Vec<Token>, expected: Vec<TopLevel>) {
+        let output = parse_input(tokens);
+        assert_eq!(
+            output,
+            expected,
+            "\nGot: {}\nExpected: {}\n",
+            serde_json::to_string_pretty(&output).unwrap().red(),
+            serde_json::to_string_pretty(&expected).unwrap().cyan()
+        );
+    }
+
     #[test]
     fn test_func_calls() {
-        setup();
+        setup(log::LevelFilter::Info);
         let input = "
 x 1 2
 y
@@ -769,55 +839,52 @@ y
 	4
 	\"Hello World\"
 ";
-        let tokens = lexer::lex_raw(input);
-        assert!(tokens.is_ok());
-        let expected_tokens = vec![
-            TokenKind::Identifier("x".to_string()),
-            TokenKind::NumberLiteral("1".to_string()),
-            TokenKind::NumberLiteral("2".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Identifier("y".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Indent,
-            TokenKind::NumberLiteral("5".to_string()),
-            TokenKind::NewLine,
-            TokenKind::NumberLiteral("4".to_string()),
-            TokenKind::NewLine,
-            TokenKind::StringLiteral("\"Hello World\"".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Dedent,
-            TokenKind::EOF,
-        ];
-        assert_eq!(map_kinds(&tokens.as_ref().unwrap()), expected_tokens);
 
-        let output = parser().parse(tokens.unwrap()).inspect_err(|errs| {
-            errs.iter().for_each(|e| error_report(e));
-        });
-        assert!(output.is_ok());
-        let expected_output = vec![
-            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "x".to_owned(),
-                args: vec![
-                    Expr::IntLiteral("1".to_owned()),
-                    Expr::IntLiteral("2".to_owned()),
-                ],
-            })),
-            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "y".to_owned(),
-                args: vec![
-                    Expr::IntLiteral("5".to_owned()),
-                    Expr::IntLiteral("4".to_owned()),
-                    Expr::StringLiteral("\"Hello World\"".to_owned()),
-                ],
-            })),
-        ];
-        let unwrapped = output.unwrap();
-        assert_eq!(unwrapped, expected_output);
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::ident("x"),
+                TokenKind::num("1"),
+                TokenKind::num("2"),
+                TokenKind::NewLine,
+                TokenKind::ident("y"),
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::num("5"),
+                TokenKind::NewLine,
+                TokenKind::num("4"),
+                TokenKind::NewLine,
+                TokenKind::str("Hello World"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "x".to_owned(),
+                    args: vec![
+                        Expr::IntLiteral("1".to_owned()),
+                        Expr::IntLiteral("2".to_owned()),
+                    ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "y".to_owned(),
+                    args: vec![
+                        Expr::IntLiteral("5".to_owned()),
+                        Expr::IntLiteral("4".to_owned()),
+                        Expr::StringLiteral("Hello World".to_owned()),
+                    ],
+                })),
+            ],
+        );
     }
 
     #[test]
     fn test_opens() {
-        setup();
+        setup(log::LevelFilter::Info);
         let input = "
 open \"fmt\"
 open Test
@@ -826,116 +893,101 @@ testCall
 	3
 	4
 ";
-        let expected_tokens = vec![
-            TokenKind::Import,
-            TokenKind::StringLiteral("\"fmt\"".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Import,
-            TokenKind::Identifier("Test".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Identifier("testCall".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Indent,
-            TokenKind::LParen,
-            TokenKind::NumberLiteral("1".to_string()),
-            TokenKind::Comma,
-            TokenKind::NumberLiteral("2".to_string()),
-            TokenKind::RParen,
-            TokenKind::NewLine,
-            TokenKind::NumberLiteral("3".to_string()),
-            TokenKind::NewLine,
-            TokenKind::NumberLiteral("4".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Dedent,
-            TokenKind::EOF,
-        ];
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::Import,
+                TokenKind::str("fmt"),
+                TokenKind::NewLine,
+                TokenKind::Import,
+                TokenKind::ident("Test"),
+                TokenKind::NewLine,
+                TokenKind::ident("testCall"),
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LParen,
+                TokenKind::num("1"),
+                TokenKind::Comma,
+                TokenKind::num("2"),
+                TokenKind::RParen,
+                TokenKind::NewLine,
+                TokenKind::num("3"),
+                TokenKind::NewLine,
+                TokenKind::num("4"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
 
-        let tokens_result = lexer::lex_raw(input);
-        assert!(tokens_result.is_ok());
-        let tokens = tokens_result.unwrap();
-        let kinds = map_kinds(&tokens);
-        assert_eq!(kinds, expected_tokens);
-
-        let output_result = parser().parse(tokens);
-        assert!(output_result.is_ok());
-        let output = output_result.unwrap();
-
-        let expected_output = vec![
-            TopLevel::GoImport(GoImport {
-                module: "\"fmt\"".to_string(),
-                alias: None,
-            }),
-            TopLevel::FungoImport(FungoImport {
-                module: "Test".to_string(),
-            }),
-            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "testCall".to_string(),
-                args: vec![
-                    Expr::TupleLiteral(vec![
-                        Expr::IntLiteral("1".to_string()),
-                        Expr::IntLiteral("2".to_string()),
-                    ]),
-                    Expr::IntLiteral("3".to_string()),
-                    Expr::IntLiteral("4".to_string()),
-                ],
-            })),
-        ];
-
-        assert_eq!(output, expected_output);
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::GoImport(GoImport {
+                    module: "fmt".to_string(),
+                    alias: None,
+                }),
+                TopLevel::FungoImport(FungoImport {
+                    module: "Test".to_string(),
+                }),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "testCall".to_string(),
+                    args: vec![
+                        Expr::TupleLiteral(vec![
+                            Expr::IntLiteral("1".to_string()),
+                            Expr::IntLiteral("2".to_string()),
+                        ]),
+                        Expr::IntLiteral("3".to_string()),
+                        Expr::IntLiteral("4".to_string()),
+                    ],
+                })),
+            ],
+        );
     }
 
     #[test]
     fn block_expression() {
-        setup();
+        setup(log::LevelFilter::Info);
         let input = "
 let x =
 	testFunc 0 1 \"a\"
 ";
-        let token_result = lexer::lex_raw(input);
-        assert!(token_result.is_ok());
-        let tokens = token_result.unwrap();
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::Let,
+                TokenKind::ident("x"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::ident("testFunc"),
+                TokenKind::num("0"),
+                TokenKind::num("1"),
+                TokenKind::str("a"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
 
-        let expected_tokens = vec![
-            TokenKind::Let,
-            TokenKind::Identifier("x".to_string()),
-            TokenKind::Assign,
-            TokenKind::NewLine,
-            TokenKind::Indent,
-            TokenKind::Identifier("testFunc".to_string()),
-            TokenKind::NumberLiteral("0".to_string()),
-            TokenKind::NumberLiteral("1".to_string()),
-            TokenKind::StringLiteral("\"a\"".to_string()),
-            TokenKind::NewLine,
-            TokenKind::Dedent,
-            TokenKind::EOF,
-        ];
-
-        let kinds: Vec<TokenKind> = map_kinds(&tokens);
-        assert_eq!(kinds, expected_tokens);
-
-        let output_result = parser().parse(tokens);
-        assert!(output_result.is_ok());
-        let output = output_result.unwrap();
-        let expected_output = vec![TopLevel::Stmt(Stmt::LetStatement(LetExpression {
-            identifier: IdentifierType::Identifier("x".to_string(), None),
-            mutable: false,
-            value: Box::new(Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                name: "testFunc".to_string(),
-                args: vec![
-                    Expr::IntLiteral("0".to_string()),
-                    Expr::IntLiteral("1".to_string()),
-                    Expr::StringLiteral("\"a\"".to_string()),
-                ],
-            })])),
-        }))];
-
-        assert_eq!(output, expected_output);
+        let _ = match_output(
+            tokens,
+            vec![TopLevel::Stmt(Stmt::LetStatement {
+                identifier: IdentifierType::Identifier("x".to_string(), None),
+                mutable: false,
+                value: Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
+                    name: "testFunc".to_string(),
+                    args: vec![
+                        Expr::IntLiteral("0".to_string()),
+                        Expr::IntLiteral("1".to_string()),
+                        Expr::StringLiteral("a".to_string()),
+                    ],
+                })]),
+            })],
+        );
     }
 
     #[test]
     fn type_definitions() {
-        setup();
-        let parser_ = parser();
+        setup(log::LevelFilter::Info);
         {
             let input = "
 type Testing = {x: int; y: int}
@@ -947,142 +999,150 @@ type TestRecord = {
 }
 ";
 
-            let token_result = lexer::lex_raw(input);
-            assert!(token_result.is_ok());
-            let tokens = token_result.unwrap();
-            let kinds = map_kinds(&tokens);
-            let expected_tokens = vec![
-                TokenKind::TypeKeyword,
-                TokenKind::Identifier("Testing".to_string()),
-                TokenKind::Assign,
-                TokenKind::LBrace,
-                TokenKind::Identifier("x".to_string()),
-                TokenKind::Colon,
-                TokenKind::Identifier("int".to_string()),
-                TokenKind::SemiColon,
-                TokenKind::Identifier("y".to_string()),
-                TokenKind::Colon,
-                TokenKind::Identifier("int".to_string()),
-                TokenKind::RBrace,
-                TokenKind::NewLine,
-                TokenKind::TypeKeyword,
-                TokenKind::Identifier("TestRecord".to_string()),
-                TokenKind::Assign,
-                TokenKind::LBrace,
-                TokenKind::NewLine,
-                TokenKind::Indent,
-                TokenKind::Identifier("TestVal".to_string()),
-                TokenKind::Colon,
-                TokenKind::LBracket,
-                TokenKind::RBracket,
-                TokenKind::Deref,
-                TokenKind::Identifier("int".to_string()),
-                TokenKind::NewLine,
-                TokenKind::Identifier("AnotherTest".to_string()),
-                TokenKind::Colon,
-                TokenKind::LBrace,
-                TokenKind::NewLine,
-                TokenKind::Indent,
-                TokenKind::Identifier("InteriorTest".to_string()),
-                TokenKind::Colon,
-                TokenKind::Identifier("string".to_string()),
-                TokenKind::NewLine,
-                TokenKind::Dedent,
-                TokenKind::RBrace,
-                TokenKind::NewLine,
-                TokenKind::Dedent,
-                TokenKind::RBrace,
-                TokenKind::NewLine,
-                TokenKind::EOF,
-            ];
-            assert_eq!(kinds, expected_tokens);
-            let output_result = parser_.parse(tokens);
-            let _ = output_result
-                .as_ref()
-                .map_err(|x| x.iter().for_each(error_report));
-            assert!(output_result.is_ok());
-            let output = output_result.unwrap();
-            let expected_output = vec![
-                TopLevel::Stmt(Stmt::TypeDefinition(
-                    "Testing".to_string(),
-                    TypeDef::RecordDefinition(RecordDefinition {
-                        fields: vec![
-                            RecordDefinitionField {
-                                name: "x".to_string(),
-                                type_: TypeDef::Type(Type::Type {
-                                    name: "int".to_string(),
-                                    module: None,
-                                }),
-                            },
-                            RecordDefinitionField {
-                                name: "y".to_string(),
-                                type_: TypeDef::Type(Type::Type {
-                                    name: "int".to_string(),
-                                    module: None,
-                                }),
-                            },
-                        ],
-                    }),
-                )),
-                TopLevel::Stmt(Stmt::TypeDefinition(
-                    "TestRecord".to_string(),
-                    TypeDef::RecordDefinition(RecordDefinition {
-                        fields: vec![
-                            RecordDefinitionField {
-                                name: "TestVal".to_string(),
-                                type_: TypeDef::Type(Type::Slice(Box::new(Type::Pointer(
-                                    Box::new(Type::Type {
+            let tokens = lex_input(
+                input,
+                vec![
+                    TokenKind::TypeKeyword,
+                    TokenKind::ident("Testing"),
+                    TokenKind::Assign,
+                    TokenKind::LBrace,
+                    TokenKind::ident("x"),
+                    TokenKind::Colon,
+                    TokenKind::ident("int"),
+                    TokenKind::SemiColon,
+                    TokenKind::ident("y"),
+                    TokenKind::Colon,
+                    TokenKind::ident("int"),
+                    TokenKind::RBrace,
+                    TokenKind::NewLine,
+                    TokenKind::TypeKeyword,
+                    TokenKind::ident("TestRecord"),
+                    TokenKind::Assign,
+                    TokenKind::LBrace,
+                    TokenKind::NewLine,
+                    TokenKind::Indent,
+                    TokenKind::ident("TestVal"),
+                    TokenKind::Colon,
+                    TokenKind::LBracket,
+                    TokenKind::RBracket,
+                    TokenKind::Deref,
+                    TokenKind::ident("int"),
+                    TokenKind::NewLine,
+                    TokenKind::ident("AnotherTest"),
+                    TokenKind::Colon,
+                    TokenKind::LBrace,
+                    TokenKind::NewLine,
+                    TokenKind::Indent,
+                    TokenKind::ident("InteriorTest"),
+                    TokenKind::Colon,
+                    TokenKind::ident("string"),
+                    TokenKind::NewLine,
+                    TokenKind::Dedent,
+                    TokenKind::RBrace,
+                    TokenKind::NewLine,
+                    TokenKind::Dedent,
+                    TokenKind::RBrace,
+                    TokenKind::NewLine,
+                ],
+            );
+            let _ = match_output(
+                tokens,
+                vec![
+                    TopLevel::Stmt(Stmt::TypeDefinition(
+                        "Testing".to_string(),
+                        TypeDef::RecordDefinition(RecordDefinition {
+                            fields: vec![
+                                RecordDefinitionField {
+                                    name: "x".to_string(),
+                                    type_: TypeDef::Type(Type::Type {
                                         name: "int".to_string(),
                                         module: None,
                                     }),
-                                )))),
-                            },
-                            RecordDefinitionField {
-                                name: "AnotherTest".to_string(),
-                                type_: TypeDef::RecordDefinition(RecordDefinition {
-                                    fields: vec![RecordDefinitionField {
-                                        name: "InteriorTest".to_string(),
-                                        type_: TypeDef::Type(Type::Type {
-                                            name: "string".to_string(),
+                                },
+                                RecordDefinitionField {
+                                    name: "y".to_string(),
+                                    type_: TypeDef::Type(Type::Type {
+                                        name: "int".to_string(),
+                                        module: None,
+                                    }),
+                                },
+                            ],
+                        }),
+                    )),
+                    TopLevel::Stmt(Stmt::TypeDefinition(
+                        "TestRecord".to_string(),
+                        TypeDef::RecordDefinition(RecordDefinition {
+                            fields: vec![
+                                RecordDefinitionField {
+                                    name: "TestVal".to_string(),
+                                    type_: TypeDef::Type(Type::Slice(Box::new(Type::Pointer(
+                                        Box::new(Type::Type {
+                                            name: "int".to_string(),
                                             module: None,
                                         }),
-                                    }],
-                                }),
-                            },
-                        ],
-                    }),
-                )),
-            ];
-            assert_eq!(output, expected_output);
+                                    )))),
+                                },
+                                RecordDefinitionField {
+                                    name: "AnotherTest".to_string(),
+                                    type_: TypeDef::RecordDefinition(RecordDefinition {
+                                        fields: vec![RecordDefinitionField {
+                                            name: "InteriorTest".to_string(),
+                                            type_: TypeDef::Type(Type::Type {
+                                                name: "string".to_string(),
+                                                module: None,
+                                            }),
+                                        }],
+                                    }),
+                                },
+                            ],
+                        }),
+                    )),
+                ],
+            );
         }
         {
             let input = "
 type TestTuple = (int, string, TestRecord)
 ";
-            let token_result = lexer::lex_raw(input);
-            assert!(token_result.is_ok());
-            let tokens = token_result.unwrap();
-            let kinds = map_kinds(&tokens);
-            let expected_tokens = vec![
-                TokenKind::TypeKeyword,
-                TokenKind::Identifier("TestTuple".to_string()),
-                TokenKind::Assign,
-                TokenKind::LParen,
-                TokenKind::Identifier("int".to_string()),
-                TokenKind::Comma,
-                TokenKind::Identifier("string".to_string()),
-                TokenKind::Comma,
-                TokenKind::Identifier("TestRecord".to_string()),
-                TokenKind::RParen,
-                TokenKind::NewLine,
-                TokenKind::EOF,
-            ];
-            assert_eq!(kinds, expected_tokens);
-            let output_result = parser_.parse(tokens);
-            let _ = output_result
-                .as_ref()
-                .map_err(|x| x.iter().for_each(error_report));
-            assert!(output_result.is_ok());
+            let tokens = lex_input(
+                input,
+                vec![
+                    TokenKind::TypeKeyword,
+                    TokenKind::ident("TestTuple"),
+                    TokenKind::Assign,
+                    TokenKind::LParen,
+                    TokenKind::ident("int"),
+                    TokenKind::Comma,
+                    TokenKind::ident("string"),
+                    TokenKind::Comma,
+                    TokenKind::ident("TestRecord"),
+                    TokenKind::RParen,
+                    TokenKind::NewLine,
+                ],
+            );
+            let _ = match_output(
+                tokens,
+                vec![TopLevel::Stmt(Stmt::TypeDefinition(
+                    "TestTuple".to_string(),
+                    TypeDef::TupleDefinition {
+                        length: 3,
+                        types: vec![
+                            TypeDef::Type(Type::Type {
+                                name: "int".to_string(),
+                                module: None,
+                            }),
+                            TypeDef::Type(Type::Type {
+                                name: "string".to_string(),
+                                module: None,
+                            }),
+                            TypeDef::Type(Type::Type {
+                                name: "TestRecord".to_string(),
+                                module: None,
+                            }),
+                        ],
+                    },
+                ))],
+            );
         }
         {
             let input = "
@@ -1090,55 +1150,555 @@ type TestADT =
 	| Test
 	| Testing of string
 
-let x = 1
-
-type Test2 = | Test | Testing of int
+type Test2 = | Test	| Testing of int
 ";
-            let token_result = lexer::lex_raw(input);
-            assert!(token_result.is_ok());
-            let tokens = token_result.unwrap();
-            let kinds = map_kinds(&tokens);
-            kinds.iter().for_each(|x| {
-                log::debug!("{:?}", x);
-            });
-            let expected_tokens = vec![
-                TokenKind::TypeKeyword,
-                TokenKind::Identifier("TestADT".to_string()),
-                TokenKind::Assign,
-                TokenKind::NewLine,
-                TokenKind::Indent,
-                TokenKind::Pipe,
-                TokenKind::Identifier("Test".to_string()),
-                TokenKind::NewLine,
-                TokenKind::Pipe,
-                TokenKind::Identifier("Testing".to_string()),
-                TokenKind::Of,
-                TokenKind::Identifier("string".to_string()),
-                TokenKind::NewLine,
-                TokenKind::Dedent,
-                TokenKind::Let,
-                TokenKind::Identifier("x".to_string()),
-                TokenKind::Assign,
-                TokenKind::NumberLiteral("1".to_string()),
-                TokenKind::NewLine,
-                TokenKind::TypeKeyword,
-                TokenKind::Identifier("Test2".to_string()),
-                TokenKind::Assign,
-                TokenKind::Pipe,
-                TokenKind::Identifier("Test".to_string()),
-                TokenKind::Pipe,
-                TokenKind::Identifier("Testing".to_string()),
-                TokenKind::Of,
-                TokenKind::Identifier("int".to_string()),
-                TokenKind::NewLine,
-                TokenKind::EOF,
-            ];
-            assert_eq!(kinds, expected_tokens);
-            let output_result = parser_.parse(tokens);
+            let tokens = lex_input(
+                input,
+                vec![
+                    TokenKind::TypeKeyword,
+                    TokenKind::ident("TestADT"),
+                    TokenKind::Assign,
+                    TokenKind::NewLine,
+                    TokenKind::Indent,
+                    TokenKind::op("|"),
+                    TokenKind::ident("Test"),
+                    TokenKind::NewLine,
+                    TokenKind::op("|"),
+                    TokenKind::ident("Testing"),
+                    TokenKind::Of,
+                    TokenKind::ident("string"),
+                    TokenKind::NewLine,
+                    TokenKind::Dedent,
+                    TokenKind::TypeKeyword,
+                    TokenKind::ident("Test2"),
+                    TokenKind::Assign,
+                    TokenKind::op("|"),
+                    TokenKind::ident("Test"),
+                    TokenKind::op("|"),
+                    TokenKind::ident("Testing"),
+                    TokenKind::Of,
+                    TokenKind::ident("int"),
+                    TokenKind::NewLine,
+                ],
+            );
+            let output_result = parser().parse(tokens);
             let _ = output_result
                 .as_ref()
                 .map_err(|x| x.iter().for_each(error_report));
             assert!(output_result.is_ok());
         }
+    }
+
+    #[test]
+    fn test_binary_expr() {
+        setup(log::LevelFilter::Info);
+        let input = "
+x + 5
+(\"test\") + \"Hello\"
+x.InsideValue -
+	5 + 2 % 3
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("5"),
+                TokenKind::NewLine,
+                TokenKind::LParen,
+                TokenKind::str("test"),
+                TokenKind::RParen,
+                TokenKind::op("+"),
+                TokenKind::str("Hello"),
+                TokenKind::NewLine,
+                TokenKind::ident("x"),
+                TokenKind::Dot,
+                TokenKind::ident("InsideValue"),
+                TokenKind::op("-"),
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::num("5"),
+                TokenKind::op("+"),
+                TokenKind::num("2"),
+                TokenKind::op("%"),
+                TokenKind::num("3"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "+".to_string(),
+                    args: vec![
+                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                        Expr::IntLiteral("5".to_string()),
+                    ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "+".to_string(),
+                    args: vec![
+                        Expr::StringLiteral("test".to_string()),
+                        Expr::StringLiteral("Hello".to_string()),
+                    ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "-".to_string(),
+                    args: vec![
+                        Expr::Accessor {
+                            left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                "x".to_string(),
+                                None,
+                            ))),
+                            right: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                "InsideValue".to_string(),
+                                None,
+                            ))),
+                        },
+                        Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
+                            name: "+".to_string(),
+                            args: vec![
+                                Expr::IntLiteral("5".to_string()),
+                                Expr::FunctionCall {
+                                    name: "%".to_string(),
+                                    args: vec![
+                                        Expr::IntLiteral("2".to_string()),
+                                        Expr::IntLiteral("3".to_string()),
+                                    ],
+                                },
+                            ],
+                        })]),
+                    ],
+                })),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_let_stmt() {
+        setup(log::LevelFilter::Info);
+        let input = "
+let x = 1
+let y = 2
+let z = {TestValue = true}
+let a = (\"Hello\", \"World\")
+let b =
+	let inner = 5 + 5
+	inner
+";
+
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::Let,
+                TokenKind::ident("x"),
+                TokenKind::Assign,
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("y"),
+                TokenKind::Assign,
+                TokenKind::num("2"),
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("z"),
+                TokenKind::Assign,
+                TokenKind::LBrace,
+                TokenKind::ident("TestValue"),
+                TokenKind::Assign,
+                TokenKind::True,
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("a"),
+                TokenKind::Assign,
+                TokenKind::LParen,
+                TokenKind::str("Hello"),
+                TokenKind::Comma,
+                TokenKind::str("World"),
+                TokenKind::RParen,
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("b"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::Let,
+                TokenKind::ident("inner"),
+                TokenKind::Assign,
+                TokenKind::num("5"),
+                TokenKind::op("+"),
+                TokenKind::num("5"),
+                TokenKind::NewLine,
+                TokenKind::ident("inner"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("x".to_string(), None),
+                    value: Expr::IntLiteral("1".to_string()),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("y".to_string(), None),
+                    value: Expr::IntLiteral("2".to_string()),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("z".to_string(), None),
+                    value: Expr::RecordLiteral {
+                        fields: vec![RecordField {
+                            name: "TestValue".to_string(),
+                            value: Expr::BoolLiteral(true),
+                        }],
+                    },
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("a".to_string(), None),
+                    value: Expr::TupleLiteral(vec![
+                        Expr::StringLiteral("Hello".to_string()),
+                        Expr::StringLiteral("World".to_string()),
+                    ]),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("b".to_string(), None),
+                    value: Expr::Block(vec![
+                        Stmt::LetStatement {
+                            identifier: IdentifierType::Identifier("inner".to_string(), None),
+                            value: Expr::FunctionCall {
+                                name: "+".to_string(),
+                                args: vec![
+                                    Expr::IntLiteral("5".to_string()),
+                                    Expr::IntLiteral("5".to_string()),
+                                ],
+                            },
+                            mutable: false,
+                        },
+                        Stmt::Expr(Expr::Identifier(IdentifierType::Identifier(
+                            "inner".to_string(),
+                            None,
+                        ))),
+                    ]),
+                    mutable: false,
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_func_definition() {
+        setup(log::LevelFilter::Info);
+        let input = "
+let firstTest x y = x + y
+let testFunc x (y: int) z =
+	let result = x + 1
+	result * z
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::Let,
+                TokenKind::ident("firstTest"),
+                TokenKind::ident("x"),
+                TokenKind::ident("y"),
+                TokenKind::Assign,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::ident("y"),
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("testFunc"),
+                TokenKind::ident("x"),
+                TokenKind::LParen,
+                TokenKind::ident("y"),
+                TokenKind::Colon,
+                TokenKind::ident("int"),
+                TokenKind::RParen,
+                TokenKind::ident("z"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::Let,
+                TokenKind::ident("result"),
+                TokenKind::Assign,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+                TokenKind::ident("result"),
+                TokenKind::Deref,
+                TokenKind::ident("z"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::FunctionDefinition {
+                    name: Some("firstTest".to_string()),
+                    arguments: vec![
+                        IdentifierType::Identifier("x".to_string(), None),
+                        IdentifierType::Identifier("y".to_string(), None),
+                    ],
+                    return_type: None,
+                    body: (Expr::FunctionCall {
+                        name: "+".to_string(),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                            Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
+                        ],
+                    }),
+                }),
+                TopLevel::Stmt(Stmt::FunctionDefinition {
+                    name: Some("testFunc".to_string()),
+                    arguments: vec![
+                        IdentifierType::Identifier("x".to_string(), None),
+                        IdentifierType::Identifier(
+                            "y".to_string(),
+                            Some(Type::Type {
+                                name: "int".to_string(),
+                                module: None,
+                            }),
+                        ),
+                        IdentifierType::Identifier("z".to_string(), None),
+                    ],
+                    return_type: None,
+                    body: (Expr::Block(vec![
+                        Stmt::LetStatement {
+                            identifier: IdentifierType::Identifier("result".to_string(), None),
+                            mutable: false,
+                            value: Expr::FunctionCall {
+                                name: "+".to_string(),
+                                args: vec![
+                                    Expr::Identifier(IdentifierType::Identifier(
+                                        "x".to_string(),
+                                        None,
+                                    )),
+                                    Expr::IntLiteral("1".to_string()),
+                                ],
+                            },
+                        },
+                        Stmt::Expr(Expr::FunctionCall {
+                            name: "*".to_string(),
+                            args: vec![
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    "result".to_string(),
+                                    None,
+                                )),
+                                Expr::Identifier(IdentifierType::Identifier("z".to_string(), None)),
+                            ],
+                        }),
+                    ])),
+                }),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_literals() {
+        setup(log::LevelFilter::Info);
+        let input = "
+let singleLine = {TestValue = \"Test\"; Val = true}
+let multiLine =
+	{
+		TestValue = \"Hello World\"
+		Val = false
+	}
+let singleTuple = (\"Hello World\", 15)
+let multiTuple =
+	(15, (\"Hello\", 20))
+let singleList = [1;2;3;4]
+let multiList =
+	[
+		1
+		2
+		3
+		4
+	]
+";
+
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::Let,
+                TokenKind::ident("singleLine"),
+                TokenKind::Assign,
+                TokenKind::LBrace,
+                TokenKind::ident("TestValue"),
+                TokenKind::Assign,
+                TokenKind::str("Test"),
+                TokenKind::SemiColon,
+                TokenKind::ident("Val"),
+                TokenKind::Assign,
+                TokenKind::True,
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("multiLine"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LBrace,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::ident("TestValue"),
+                TokenKind::Assign,
+                TokenKind::str("Hello World"),
+                TokenKind::NewLine,
+                TokenKind::ident("Val"),
+                TokenKind::Assign,
+                TokenKind::False,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::Let,
+                TokenKind::ident("singleTuple"),
+                TokenKind::Assign,
+                TokenKind::LParen,
+                TokenKind::str("Hello World"),
+                TokenKind::Comma,
+                TokenKind::num("15"),
+                TokenKind::RParen,
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("multiTuple"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LParen,
+                TokenKind::num("15"),
+                TokenKind::Comma,
+                TokenKind::LParen,
+                TokenKind::str("Hello"),
+                TokenKind::Comma,
+                TokenKind::num("20"),
+                TokenKind::RParen,
+                TokenKind::RParen,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::Let,
+                TokenKind::ident("singleList"),
+                TokenKind::Assign,
+                TokenKind::LBracket,
+                TokenKind::num("1"),
+                TokenKind::SemiColon,
+                TokenKind::num("2"),
+                TokenKind::SemiColon,
+                TokenKind::num("3"),
+                TokenKind::SemiColon,
+                TokenKind::num("4"),
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("multiList"),
+                TokenKind::Assign,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LBracket,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+                TokenKind::num("2"),
+                TokenKind::NewLine,
+                TokenKind::num("3"),
+                TokenKind::NewLine,
+                TokenKind::num("4"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("singleLine".to_string(), None),
+                    value: Expr::RecordLiteral {
+                        fields: vec![
+                            RecordField {
+                                name: "TestValue".to_string(),
+                                value: Expr::StringLiteral("Test".to_string()),
+                            },
+                            RecordField {
+                                name: "Val".to_string(),
+                                value: Expr::BoolLiteral(true),
+                            },
+                        ],
+                    },
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("multiLine".to_string(), None),
+                    mutable: false,
+                    value: Expr::Block(vec![Stmt::Expr(Expr::RecordLiteral {
+                        fields: vec![
+                            RecordField {
+                                name: "TestValue".to_string(),
+                                value: Expr::StringLiteral("Hello World".to_string()),
+                            },
+                            RecordField {
+                                name: "Val".to_string(),
+                                value: Expr::BoolLiteral(false),
+                            },
+                        ],
+                    })]),
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("singleTuple".to_string(), None),
+                    value: Expr::TupleLiteral(vec![
+                        Expr::StringLiteral("Hello World".to_string()),
+                        Expr::IntLiteral("15".to_string()),
+                    ]),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("multiTuple".to_string(), None),
+                    value: Expr::Block(vec![Stmt::Expr(Expr::TupleLiteral(vec![
+                        Expr::IntLiteral("15".to_string()),
+                        Expr::TupleLiteral(vec![
+                            Expr::StringLiteral("Hello".to_string()),
+                            Expr::IntLiteral("20".to_string()),
+                        ]),
+                    ]))]),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("singleList".to_string(), None),
+                    value: Expr::ArrayLiteral(vec![
+                        Expr::IntLiteral("1".to_string()),
+                        Expr::IntLiteral("2".to_string()),
+                        Expr::IntLiteral("3".to_string()),
+                        Expr::IntLiteral("4".to_string()),
+                    ]),
+                    mutable: false,
+                }),
+                TopLevel::Stmt(Stmt::LetStatement {
+                    identifier: IdentifierType::Identifier("multiList".to_string(), None),
+                    value: Expr::Block(vec![Stmt::Expr(Expr::ArrayLiteral(vec![
+                        Expr::IntLiteral("1".to_string()),
+                        Expr::IntLiteral("2".to_string()),
+                        Expr::IntLiteral("3".to_string()),
+                        Expr::IntLiteral("4".to_string()),
+                    ]))]),
+                    mutable: false,
+                }),
+            ],
+        );
     }
 }

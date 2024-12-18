@@ -1,8 +1,17 @@
 use ariadne::{self, Label, Report, ReportKind, Source};
 use logos::Logos;
+use operators::OperatorFolder;
+use serde::Serialize;
 use std::{error::Error, fmt::Display, ops::Range, rc::Rc};
 
-#[derive(Debug, Logos, PartialEq, Eq, Clone, Hash)]
+fn clean_string<'s>(lexer: &mut logos::Lexer<'s, TokenKind>) -> String {
+    let value = lexer.slice();
+    let mut new_str = value.chars().skip(1).collect::<String>();
+    new_str.pop();
+    new_str
+}
+
+#[derive(Debug, Logos, PartialEq, Eq, Clone, Hash, Serialize)]
 // #[logos(skip r"[ \t\n\f]+")]
 pub enum TokenKind {
     #[regex(r"[0-9]+", |lex| (lex.slice().to_string()))]
@@ -11,7 +20,7 @@ pub enum TokenKind {
     Let,
     #[token("open")]
     Import,
-    #[regex(r#""[^"]*""#, |lex| (lex.slice().to_string()))]
+    #[regex(r#""[^"]*""#, clean_string)]
     StringLiteral(String),
     #[regex(r"//.*")]
     Comment,
@@ -49,7 +58,7 @@ pub enum TokenKind {
     #[token("module")]
     Module,
 
-    #[regex(r"\+|-|\/|%|\^|<<|>>", |lex| lex.slice().to_string())]
+    #[regex(r"[\+\-\|\/\%\^<>]+", |lex| lex.slice().to_string())]
     Operator(String),
 
     #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| lex.slice().to_string())]
@@ -85,20 +94,6 @@ pub enum TokenKind {
     ChannelAssign,
     #[token("::")]
     Append,
-    #[token("==")]
-    Equality,
-    #[token(">")]
-    GT,
-    #[token("<")]
-    LT,
-    #[token(">=")]
-    GTE,
-    #[token("<=")]
-    LTE,
-    #[token("|>")]
-    PipeRight,
-    #[token("|")]
-    Pipe,
     #[token("..")]
     Range,
     #[token("->")]
@@ -112,7 +107,24 @@ pub enum TokenKind {
 
     Indent,
     Dedent,
-    EOF,
+}
+
+impl TokenKind {
+    pub fn ident(input: &str) -> Self {
+        Self::Identifier(input.to_string())
+    }
+
+    pub fn op(input: &str) -> Self {
+        Self::Operator(input.to_string())
+    }
+
+    pub fn num(input: &str) -> Self {
+        Self::NumberLiteral(input.to_string())
+    }
+
+    pub fn str(input: &str) -> Self {
+        Self::StringLiteral(input.to_string())
+    }
 }
 
 type Span = Range<usize>;
@@ -157,12 +169,6 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
             Err(_) => tokens.push(Err(())),
         }
     }
-    tokens.push(Ok(Token {
-        kind: TokenKind::EOF,
-        span: (0 as usize)..(0 as usize),
-        source: input_rc.clone(),
-        file: path.clone(),
-    }));
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
     let error_src = input_rc.clone();
@@ -224,18 +230,14 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
             Err(_) => tokens.push(Err(())),
         }
     }
-    tokens.push(Ok(Token {
-        kind: TokenKind::EOF,
-        span: (0 as usize)..(0 as usize),
-        source: input.clone(),
-        file: refcounted_file_path.clone(),
-    }));
 
     // Filter out the errors
     // TODO: Actually do something with the errors
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
     let error_src = input.clone();
+    let len = tokens.len();
+    let folder = OperatorFolder::new(len);
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
@@ -262,13 +264,63 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .collect::<Vec<Token>>();
+        .fold(folder, |acc, token| acc.fold(token))
+        .tokens;
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input.clone(), refcounted_file_path.clone());
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
     return Ok(parsed_output);
+}
+
+mod operators {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy)]
+    enum PrevToken {
+        Deref,
+        Pointer,
+        Other,
+    }
+
+    pub struct OperatorFolder {
+        pub tokens: Vec<Token>,
+        current: Option<Token>,
+        prev: PrevToken,
+    }
+
+    impl OperatorFolder {
+        pub fn new(size: usize) -> Self {
+            OperatorFolder {
+                tokens: Vec::with_capacity(size),
+                current: None,
+                prev: PrevToken::Other,
+            }
+        }
+
+        pub fn fold(mut self, token: Token) -> Self {
+            match &token.kind {
+                TokenKind::Operator(op) => match self.current.as_ref().map(|x| x.kind) {
+                    Some(TokenKind::Operator(current_op)) => {
+                        self.current = Some(Token {
+                            kind: TokenKind::Operator(format!("{}{}", current_op, op)),
+                            ..self.current.unwrap()
+                        });
+                        self
+                    }
+                    None => {
+                        self.current = Some(token);
+                        self
+                    }
+                },
+                _ => {
+                    self.tokens.push(token);
+                    self
+                }
+            }
+        }
+    }
 }
 
 struct WhiteSpaceParser {
@@ -279,8 +331,6 @@ struct WhiteSpaceParser {
     source: Rc<String>,
     file_name: Rc<String>,
     span: Range<usize>,
-    end_token_for_block: TokenKind,
-    end_token_stack: Vec<TokenKind>,
 }
 
 impl WhiteSpaceParser {
@@ -294,26 +344,11 @@ impl WhiteSpaceParser {
             source,
             file_name,
             span: 0..0,
-            end_token_for_block: TokenKind::EOF,
-            end_token_stack: Vec::new(),
         }
     }
 
     fn get_output(self) -> Vec<Token> {
         self.output
-    }
-
-    fn push_end_token(&mut self, token: TokenKind) {
-        self.end_token_stack.push(self.end_token_for_block.clone());
-        self.end_token_for_block = token;
-    }
-
-    fn pop_end_token(&mut self) {
-        if let Some(token) = self.end_token_stack.pop() {
-            self.end_token_for_block = token;
-        } else {
-            panic!("Popped empty end token stack");
-        }
     }
 
     fn push_indent(&mut self) {
@@ -407,94 +442,7 @@ impl WhiteSpaceParser {
                 _ => self.output.push(current),
             }
         }
-    }
-
-    pub fn parse_old(&mut self) {
-        while let Some(current) = self.pop_token() {
-            let Token { kind, .. } = &current;
-            if kind == &self.end_token_for_block {
-                self.output.push(current);
-                break;
-            }
-
-            match (kind, self.end_token_for_block == TokenKind::EOF) {
-                (&TokenKind::NewLine, true) => {
-                    while let Some(current) = self.pop_token() {
-                        let tok = &current.kind;
-                        match tok {
-                            &TokenKind::NewLine => continue,
-
-                            &TokenKind::Space => {
-                                let (token, new_indent) = self.parse_spaces();
-                                if new_indent > self.current_indent {
-                                    self.push_indent();
-                                    self.current_indent = new_indent;
-                                } else if new_indent < self.current_indent {
-                                    self.push_dedent();
-                                    self.current_indent = new_indent;
-                                }
-                                self.output.push(token);
-                                break;
-                            }
-
-                            &TokenKind::Tab => {
-                                let (token, new_indent) = self.parse_tabs();
-                                if new_indent > self.current_indent {
-                                    self.push_indent();
-                                    self.current_indent = new_indent;
-                                } else if new_indent < self.current_indent {
-                                    self.push_dedent();
-                                    self.current_indent = new_indent;
-                                }
-                                self.output.push(token);
-                                break;
-                            }
-
-                            _ => {
-                                self.pop_to_root();
-                                self.output.push(current);
-                                break;
-                            }
-                        }
-                    }
-
-                    if let Some(x) = self.output.last() {
-                        if x.kind == self.end_token_for_block {
-                            break;
-                        }
-                    }
-                }
-                (&TokenKind::NewLine, false) => continue,
-
-                (&TokenKind::LParen, _) => {
-                    self.output.push(current);
-                    self.push_end_token(TokenKind::RParen);
-                    self.parse();
-                    self.pop_end_token();
-                    continue;
-                }
-
-                (&TokenKind::LBrace, _) => {
-                    self.output.push(current);
-                    self.push_end_token(TokenKind::RBrace);
-                    self.parse();
-                    self.pop_end_token();
-                    continue;
-                }
-
-                (&TokenKind::LBracket, _) => {
-                    self.output.push(current);
-                    self.push_end_token(TokenKind::RBracket);
-                    self.parse();
-                    self.pop_end_token();
-                    continue;
-                }
-
-                (&TokenKind::Space, _) | (&TokenKind::Tab, _) => continue,
-
-                _ => self.output.push(current),
-            };
-        }
+        self.pop_to_root();
     }
 
     fn parse_spaces(&mut self) -> (Token, usize) {
@@ -566,14 +514,14 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
-        env_logger::builder()
-            .filter_level(log::LevelFilter::Debug)
-            .init();
         let input = "
 let x =
 	1
+
+{
+	TestValue = \"Hello World\"
+}
 ";
-        log::debug!("{}", input);
         let expected_output = vec![
             TokenKind::Let,
             TokenKind::Identifier("x".to_string()),
@@ -583,7 +531,16 @@ let x =
             TokenKind::NumberLiteral("1".to_string()),
             TokenKind::NewLine,
             TokenKind::Dedent,
-            TokenKind::EOF,
+            TokenKind::LBrace,
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::ident("TestValue"),
+            TokenKind::Assign,
+            TokenKind::str("Hello World"),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+            TokenKind::RBrace,
+            TokenKind::NewLine,
         ];
         let output = lex_raw(input);
         assert!(output.is_ok());

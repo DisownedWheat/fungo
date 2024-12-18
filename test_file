@@ -24,7 +24,7 @@ let getValue (&t: *TestRecord) = t.testVal.additionalVal
 
 let main () =
 	let ( record: TestRecord ) = {
-		TestVal = 1,
+		TestVal = 1
 		AnotherTest = {InteriorTest = "Hello World"}
 	}
 	print record
@@ -32,7 +32,7 @@ let main () =
 		&record
 	let x = (1, 2, 3)
 	let y = ({value = record.TestVal})
-	()
+	x ++ y
 
 
 let test testValue = (

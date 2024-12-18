@@ -1,11 +1,8 @@
 // AST NODES
-use std::rc::Rc;
 
 use serde::Serialize;
 
 pub type ASTString = String;
-pub type LogicBlock = Vec<Stmt>;
-pub type TokenPosition = (usize, usize);
 
 // Imports
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -97,22 +94,6 @@ pub struct RecordField {
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct LetExpression {
-    pub identifier: IdentifierType,
-    pub value: Box<Expr>,
-    pub mutable: bool,
-}
-
-// Functions
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct FunctionDefinition {
-    pub name: Option<ASTString>,
-    pub arguments: Vec<IdentifierType>,
-    pub return_type: Option<Type>,
-    pub body: LogicBlock,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Tuple {
     length: usize,
     values: Vec<Type>,
@@ -137,42 +118,34 @@ pub struct Assign {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Expr {
-    Unit,
     Identifier(IdentifierType),
     Block(Vec<Stmt>),
     BoolLiteral(bool),
     StringLiteral(ASTString),
     IntLiteral(ASTString),
     FloatLiteral(ASTString),
-    RecordLiteral {
-        fields: Vec<RecordField>,
-    },
+    RecordLiteral { fields: Vec<RecordField> },
     ArrayLiteral(Vec<Expr>),
     TupleLiteral(Vec<Expr>),
-    BinaryOp {
-        left: Box<Expr>,
-        right: Box<Expr>,
-        op: ASTString,
-    },
-    FunctionCall {
-        name: ASTString,
-        args: Vec<Expr>,
-    },
-    Accessor {
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
-    Index {
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
+    FunctionCall { name: ASTString, args: Vec<Expr> },
+    Accessor { left: Box<Expr>, right: Box<Expr> },
+    Index { left: Box<Expr>, right: Box<Expr> },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Stmt {
     Expr(Expr),
-    LetStatement(LetExpression),
-    FunctionDefinition(FunctionDefinition),
+    LetStatement {
+        identifier: IdentifierType,
+        value: Expr,
+        mutable: bool,
+    },
+    FunctionDefinition {
+        name: Option<ASTString>,
+        arguments: Vec<IdentifierType>,
+        return_type: Option<Type>,
+        body: Expr,
+    },
     TypeDefinition(ASTString, TypeDef),
 }
 
