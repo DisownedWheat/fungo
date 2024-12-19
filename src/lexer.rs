@@ -13,7 +13,7 @@ fn clean_string<'s>(lexer: &mut logos::Lexer<'s, TokenKind>) -> String {
 #[derive(Debug, Logos, PartialEq, Eq, Clone, Hash, Serialize)]
 // #[logos(skip r"[ \t\n\f]+")]
 pub enum TokenKind {
-    #[regex(r"[0-9]+", |lex| (lex.slice().to_string()))]
+    #[regex(r"[-]?[0-9]+[.]?[0-9]*", |lex| (lex.slice().to_string()))]
     NumberLiteral(String),
     #[token("let")]
     Let,
@@ -551,7 +551,7 @@ let x =
     fn lexer_operators() {
         setup();
         let input = "
-x * 2
+x * 2.051
 *a ++ 5
 b && c
 5 * x
@@ -560,7 +560,7 @@ b && c
         let expected_output = vec![
             TokenKind::ident("x"),
             TokenKind::Deref,
-            TokenKind::num("2"),
+            TokenKind::num("2.051"),
             TokenKind::NewLine,
             TokenKind::Deref,
             TokenKind::ident("a"),

@@ -131,7 +131,13 @@ fn str_() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 
 fn digit() -> impl Parser<Token, Expr, Error = Simple<Token>> {
     identifier(StrValueType::Number)
-        .map(|s| Expr::IntLiteral(s))
+        .map(|s| {
+            if s.contains(".") {
+                Expr::FloatLiteral(s)
+            } else {
+                Expr::IntLiteral(s)
+            }
+        })
         .labelled("Number Literal")
 }
 
