@@ -124,12 +124,28 @@ pub enum Expr {
     StringLiteral(ASTString),
     IntLiteral(ASTString),
     FloatLiteral(ASTString),
-    RecordLiteral { fields: Vec<RecordField> },
+    IfExpr {
+        condition: Box<Expr>,
+        consequent: Box<Expr>,
+        alternative: Option<Box<Expr>>,
+    },
+    RecordLiteral {
+        fields: Vec<RecordField>,
+    },
     ArrayLiteral(Vec<Expr>),
     TupleLiteral(Vec<Expr>),
-    FunctionCall { name: ASTString, args: Vec<Expr> },
-    Accessor { left: Box<Expr>, right: Box<Expr> },
-    Index { left: Box<Expr>, right: Box<Expr> },
+    FunctionCall {
+        name: ASTString,
+        args: Vec<Expr>,
+    },
+    Accessor {
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    Index {
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]

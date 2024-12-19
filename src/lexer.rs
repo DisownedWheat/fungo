@@ -31,12 +31,10 @@ pub enum TokenKind {
     Go,
     #[token("if")]
     If,
+    #[token("then")]
+    Then,
     #[token("else")]
     Else,
-    #[token("and")]
-    And,
-    #[token("or")]
-    Or,
     #[token("true")]
     True,
     #[token("false")]
@@ -172,6 +170,7 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
     let error_src = input_rc.clone();
+    let folder = OperatorFolder::new(tokens.len());
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
@@ -198,7 +197,8 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .collect::<Vec<Token>>();
+        .fold(folder, |acc, x| acc.fold(x))
+        .tokens;
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input_rc.clone(), path.clone());
@@ -284,6 +284,7 @@ mod operators {
         Other,
     }
 
+    #[derive(Debug)]
     pub struct OperatorFolder {
         pub tokens: Vec<Token>,
         current: Option<Token>,
@@ -301,20 +302,78 @@ mod operators {
 
         pub fn fold(mut self, token: Token) -> Self {
             match &token.kind {
-                TokenKind::Operator(op) => match self.current.as_ref().map(|x| x.kind) {
+                TokenKind::Operator(op) => match self.current.as_ref().map(|x| x.kind.clone()) {
                     Some(TokenKind::Operator(current_op)) => {
                         self.current = Some(Token {
                             kind: TokenKind::Operator(format!("{}{}", current_op, op)),
                             ..self.current.unwrap()
                         });
+                        self.prev = PrevToken::Other;
                         self
                     }
                     None => {
                         self.current = Some(token);
+                        self.prev = PrevToken::Other;
                         self
                     }
+                    _ => panic!(),
+                },
+                TokenKind::Deref => match self.current.as_ref().map(|x| x.kind.clone()) {
+                    Some(TokenKind::Operator(current_op)) => {
+                        self.current = Some(Token {
+                            kind: TokenKind::Operator(format!("{}{}", current_op, "*")),
+                            ..self.current.unwrap()
+                        });
+                        self.prev = PrevToken::Other;
+                        self
+                    }
+                    None => {
+                        self.current = Some(Token {
+                            kind: TokenKind::op("*"),
+                            ..token
+                        });
+                        self.prev = PrevToken::Deref;
+                        self
+                    }
+                    _ => panic!(),
+                },
+                TokenKind::Pointer => match self.current.as_ref().map(|x| x.kind.clone()) {
+                    Some(TokenKind::Operator(current_op)) => {
+                        self.current = Some(Token {
+                            kind: TokenKind::Operator(format!("{}{}", current_op, "&")),
+                            ..self.current.unwrap()
+                        });
+                        self.prev = PrevToken::Other;
+                        self
+                    }
+                    None => {
+                        self.current = Some(Token {
+                            kind: TokenKind::op("&"),
+                            ..token
+                        });
+                        self.prev = PrevToken::Pointer;
+                        self
+                    }
+                    _ => panic!(),
                 },
                 _ => {
+                    let current = self.current;
+                    self.current = None;
+                    match (self.prev, &current) {
+                        (PrevToken::Other, Some(c)) => {
+                            self.tokens.push(c.clone());
+                            self.current = None;
+                        }
+                        (PrevToken::Deref, Some(c)) => self.tokens.push(Token {
+                            kind: TokenKind::Deref,
+                            ..c.clone()
+                        }),
+                        (PrevToken::Pointer, Some(c)) => self.tokens.push(Token {
+                            kind: TokenKind::Pointer,
+                            ..c.clone()
+                        }),
+                        _ => {}
+                    }
                     self.tokens.push(token);
                     self
                 }
@@ -512,8 +571,15 @@ impl WhiteSpaceParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn setup() {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Info)
+            .try_init();
+    }
     #[test]
     fn test() {
+        setup();
         let input = "
 let x =
 	1
@@ -540,6 +606,45 @@ let x =
             TokenKind::NewLine,
             TokenKind::Dedent,
             TokenKind::RBrace,
+            TokenKind::NewLine,
+        ];
+        let output = lex_raw(input);
+        assert!(output.is_ok());
+        let kinds: Vec<TokenKind> = output
+            .unwrap()
+            .into_iter()
+            .map(|Token { kind, .. }| kind)
+            .collect();
+        assert_eq!(kinds, expected_output);
+    }
+
+    #[test]
+    fn lexer_operators() {
+        setup();
+        let input = "
+x * 2
+*a ++ 5
+b && c
+5 * x
+";
+
+        let expected_output = vec![
+            TokenKind::ident("x"),
+            TokenKind::Deref,
+            TokenKind::num("2"),
+            TokenKind::NewLine,
+            TokenKind::Deref,
+            TokenKind::ident("a"),
+            TokenKind::op("++"),
+            TokenKind::num("5"),
+            TokenKind::NewLine,
+            TokenKind::ident("b"),
+            TokenKind::op("&&"),
+            TokenKind::ident("c"),
+            TokenKind::NewLine,
+            TokenKind::num("5"),
+            TokenKind::Deref,
+            TokenKind::ident("x"),
             TokenKind::NewLine,
         ];
         let output = lex_raw(input);

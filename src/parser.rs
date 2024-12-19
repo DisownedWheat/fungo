@@ -359,7 +359,7 @@ fn match_parser<'a>(
 fn expr<'a>(
     stmt: BoxedParser<'a, Token, Stmt, Simple<Token>>,
 ) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
-    let inner_expr = recursive(move |expr| {
+    recursive(move |expr| {
         let match_parser = match_parser(expr.clone().boxed());
         let array_literal = (expr.clone().separated_by(
             semicolon("Array Literal")
@@ -489,6 +489,22 @@ fn expr<'a>(
             .labelled("Base Expr")
             .boxed();
 
+        let if_expr = token(TokenKind::If, "If Expr")
+            .ignore_then(expr.clone())
+            .then_ignore(token(TokenKind::Then, "If Expr"))
+            .then(expr.clone())
+            .then((token(TokenKind::Else, "If Expr").ignore_then(expr.clone())).or_not())
+            .map(|((condition, consequent), alternative)| Expr::IfExpr {
+                condition: Box::new(condition),
+                consequent: Box::new(consequent),
+                alternative: match alternative {
+                    Some(alt) => Some(Box::new(alt)),
+                    None => None,
+                },
+            })
+            .boxed()
+            .labelled("If Expression");
+
         let func_call = ident_token()
             .then(choice((
                 indent("Func Call")
@@ -503,39 +519,39 @@ fn expr<'a>(
             .map(|(name, args)| Expr::FunctionCall { name, args })
             .labelled("Function Call");
 
-        choice((block_expr.boxed(), func_call.boxed(), chain_expr, atom))
-            .labelled("Expression")
-            .padded_by(token(TokenKind::Comment, "Expr").or_not().ignored())
-    })
-    .labelled("Expression");
+        let binary_op = choice((
+            identifier(StrValueType::Operator),
+            (token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string())).boxed(),
+            assign("Binary Expr").to("=".to_string()).boxed(),
+        ));
 
-    recursive(|binary| {
-        inner_expr
-            .clone()
-            .then(
-                choice((
-                    (identifier(StrValueType::Operator)
-                        .or(token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string()))
-                        .then(
-                            (newline("Binary Expr").or_not())
-                                .ignore_then(binary.clone().or(inner_expr.clone())),
-                        )),
-                    (newline("Binary Expr").ignore_then(
-                        identifier(StrValueType::Operator)
-                            .or(token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string()))
-                            .then(binary.clone().or(inner_expr.clone())),
-                    )),
-                ))
-                .or_not(),
-            )
-            .map(|(left, is_op)| match is_op {
-                Some((op, right)) => Expr::FunctionCall {
-                    name: op,
-                    args: vec![left, right],
-                },
-                None => left,
-            })
+        choice((
+            if_expr,
+            block_expr.boxed(),
+            func_call.boxed(),
+            chain_expr,
+            atom,
+        ))
+        .labelled("Expression")
+        .padded_by(token(TokenKind::Comment, "Expr").or_not().ignored())
+        .then(
+            choice((
+                binary_op
+                    .clone()
+                    .then((newline("Binary Expr").or_not()).ignore_then(expr.clone())),
+                (newline("Binary Expr").ignore_then(binary_op.then(expr.clone()))),
+            ))
+            .or_not(),
+        )
+        .map(|(left, is_op)| match is_op {
+            Some((op, right)) => Expr::FunctionCall {
+                name: op,
+                args: vec![left, right],
+            },
+            None => left,
+        })
     })
+    .labelled("Expression")
     .boxed()
 }
 
@@ -785,9 +801,11 @@ mod test {
     use serde_json;
     static INIT: std::sync::Once = std::sync::Once::new();
 
-    fn setup(level: log::LevelFilter) {
+    fn setup() {
         INIT.call_once(|| {
-            let _ = env_logger::builder().filter_level(level).try_init();
+            let _ = env_logger::builder()
+                .filter_level(log::LevelFilter::Info)
+                .try_init();
         })
     }
 
@@ -831,12 +849,12 @@ mod test {
 
     #[test]
     fn test_func_calls() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 x 1 2
 y
-	5
-	4
+	(5 +
+	4)
 	\"Hello World\"
 ";
 
@@ -850,9 +868,12 @@ y
                 TokenKind::ident("y"),
                 TokenKind::NewLine,
                 TokenKind::Indent,
+                TokenKind::LParen,
                 TokenKind::num("5"),
+                TokenKind::op("+"),
                 TokenKind::NewLine,
                 TokenKind::num("4"),
+                TokenKind::RParen,
                 TokenKind::NewLine,
                 TokenKind::str("Hello World"),
                 TokenKind::NewLine,
@@ -873,8 +894,13 @@ y
                 TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
                     name: "y".to_owned(),
                     args: vec![
-                        Expr::IntLiteral("5".to_owned()),
-                        Expr::IntLiteral("4".to_owned()),
+                        Expr::FunctionCall {
+                            name: "+".to_string(),
+                            args: vec![
+                                Expr::IntLiteral("5".to_owned()),
+                                Expr::IntLiteral("4".to_owned()),
+                            ],
+                        },
                         Expr::StringLiteral("Hello World".to_owned()),
                     ],
                 })),
@@ -884,7 +910,7 @@ y
 
     #[test]
     fn test_opens() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 open \"fmt\"
 open Test
@@ -946,7 +972,7 @@ testCall
 
     #[test]
     fn block_expression() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 let x =
 	testFunc 0 1 \"a\"
@@ -987,7 +1013,7 @@ let x =
 
     #[test]
     fn type_definitions() {
-        setup(log::LevelFilter::Info);
+        setup();
         {
             let input = "
 type Testing = {x: int; y: int}
@@ -1191,7 +1217,7 @@ type Test2 = | Test	| Testing of int
 
     #[test]
     fn test_binary_expr() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 x + 5
 (\"test\") + \"Hello\"
@@ -1277,7 +1303,7 @@ x.InsideValue -
 
     #[test]
     fn test_let_stmt() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 let x = 1
 let y = 2
@@ -1395,7 +1421,7 @@ let b =
 
     #[test]
     fn test_func_definition() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 let firstTest x y = x + y
 let testFunc x (y: int) z =
@@ -1506,7 +1532,7 @@ let testFunc x (y: int) z =
 
     #[test]
     fn test_literals() {
-        setup(log::LevelFilter::Info);
+        setup();
         let input = "
 let singleLine = {TestValue = \"Test\"; Val = true}
 let multiLine =
@@ -1698,6 +1724,207 @@ let multiList =
                     ]))]),
                     mutable: false,
                 }),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_if_expr() {
+        setup();
+        let input = "
+if x then x + 1
+if x + 1 = 5 then x
+if x then x + 1 else x + 2
+if testRecord.Value > 5 then
+	{Value = 5}
+
+if testRecord.Value < 5 then
+	testRecord
+else
+	{Value = 5}
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::If,
+                TokenKind::ident("x"),
+                TokenKind::Then,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+                TokenKind::If,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("1"),
+                TokenKind::Assign,
+                TokenKind::num("5"),
+                TokenKind::Then,
+                TokenKind::ident("x"),
+                TokenKind::NewLine,
+                TokenKind::If,
+                TokenKind::ident("x"),
+                TokenKind::Then,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("1"),
+                TokenKind::Else,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("2"),
+                TokenKind::NewLine,
+                TokenKind::If,
+                TokenKind::ident("testRecord"),
+                TokenKind::Dot,
+                TokenKind::ident("Value"),
+                TokenKind::op(">"),
+                TokenKind::num("5"),
+                TokenKind::Then,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LBrace,
+                TokenKind::ident("Value"),
+                TokenKind::Assign,
+                TokenKind::num("5"),
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::If,
+                TokenKind::ident("testRecord"),
+                TokenKind::Dot,
+                TokenKind::ident("Value"),
+                TokenKind::op("<"),
+                TokenKind::num("5"),
+                TokenKind::Then,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::ident("testRecord"),
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+                TokenKind::Else,
+                TokenKind::NewLine,
+                TokenKind::Indent,
+                TokenKind::LBrace,
+                TokenKind::ident("Value"),
+                TokenKind::Assign,
+                TokenKind::num("5"),
+                TokenKind::RBrace,
+                TokenKind::NewLine,
+                TokenKind::Dedent,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
+                    condition: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "x".to_string(),
+                        None,
+                    ))),
+                    consequent: Box::new(Expr::FunctionCall {
+                        name: "+".to_string(),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                            Expr::IntLiteral("1".to_string()),
+                        ],
+                    }),
+                    alternative: None,
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
+                    condition: Box::new(Expr::FunctionCall {
+                        name: "+".to_string(),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                            Expr::FunctionCall {
+                                name: "=".to_string(),
+                                args: vec![
+                                    Expr::IntLiteral("1".to_string()),
+                                    Expr::IntLiteral("5".to_string()),
+                                ],
+                            },
+                        ],
+                    }),
+                    consequent: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "x".to_string(),
+                        None,
+                    ))),
+                    alternative: None,
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
+                    condition: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "x".to_string(),
+                        None,
+                    ))),
+                    consequent: Box::new(Expr::FunctionCall {
+                        name: "+".to_string(),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                            Expr::IntLiteral("1".to_string()),
+                        ],
+                    }),
+                    alternative: Some(Box::new(Expr::FunctionCall {
+                        name: "+".to_string(),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                            Expr::IntLiteral("2".to_string()),
+                        ],
+                    })),
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
+                    condition: Box::new(Expr::FunctionCall {
+                        name: ">".to_string(),
+                        args: vec![
+                            Expr::Accessor {
+                                left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                    "testRecord".to_string(),
+                                    None,
+                                ))),
+                                right: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                    "Value".to_string(),
+                                    None,
+                                ))),
+                            },
+                            Expr::IntLiteral("5".to_string()),
+                        ],
+                    }),
+                    consequent: Box::new(Expr::Block(vec![Stmt::Expr(Expr::RecordLiteral {
+                        fields: vec![RecordField {
+                            name: "Value".to_string(),
+                            value: Expr::IntLiteral("5".to_string()),
+                        }],
+                    })])),
+                    alternative: None,
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
+                    condition: Box::new(Expr::FunctionCall {
+                        name: "<".to_string(),
+                        args: vec![
+                            Expr::Accessor {
+                                left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                    "testRecord".to_string(),
+                                    None,
+                                ))),
+                                right: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                    "Value".to_string(),
+                                    None,
+                                ))),
+                            },
+                            Expr::IntLiteral("5".to_string()),
+                        ],
+                    }),
+                    consequent: Box::new(Expr::Block(vec![Stmt::Expr(Expr::Identifier(
+                        IdentifierType::Identifier("testRecord".to_string(), None),
+                    ))])),
+                    alternative: Some(Box::new(Expr::Block(vec![Stmt::Expr(
+                        Expr::RecordLiteral {
+                            fields: vec![RecordField {
+                                name: "Value".to_string(),
+                                value: Expr::IntLiteral("5".to_string()),
+                            }],
+                        },
+                    )]))),
+                })),
             ],
         );
     }
