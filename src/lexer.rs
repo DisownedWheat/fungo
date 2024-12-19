@@ -1,6 +1,5 @@
 use ariadne::{self, Label, Report, ReportKind, Source};
 use logos::Logos;
-use operators::OperatorFolder;
 use serde::Serialize;
 use std::{error::Error, fmt::Display, ops::Range, rc::Rc};
 
@@ -56,13 +55,12 @@ pub enum TokenKind {
     #[token("module")]
     Module,
 
-    #[regex(r"[\+\-\|\/\%\^<>]+", |lex| lex.slice().to_string())]
+    #[regex(r"[\+\-\|\/\%\^<>=.&\*:]+", |lex| lex.slice().to_string())]
     Operator(String),
 
     #[regex(r"[a-zA-Z_$@][a-zA-Z0-9_$@]*", |lex| lex.slice().to_string())]
     Identifier(String),
 
-    #[token("=")]
     Assign,
     #[token("{")]
     LBrace,
@@ -72,7 +70,6 @@ pub enum TokenKind {
     LBracket,
     #[token("]")]
     RBracket,
-    #[token(":")]
     Colon,
     #[token(";")]
     SemiColon,
@@ -82,18 +79,11 @@ pub enum TokenKind {
     RParen,
     #[token(",")]
     Comma,
-    #[token(".")]
     Dot,
-    #[token("&")]
     Pointer,
-    #[token("*")]
     Deref,
     #[token("<-")]
     ChannelAssign,
-    #[token("::")]
-    Append,
-    #[token("..")]
-    Range,
     #[token("->")]
     ReturnType,
     #[regex(r"\n")]
@@ -170,7 +160,6 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
     let error_src = input_rc.clone();
-    let folder = OperatorFolder::new(tokens.len());
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
@@ -197,8 +186,33 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .fold(folder, |acc, x| acc.fold(x))
-        .tokens;
+        .map(|token| match &token.kind {
+            TokenKind::Operator(s) => match s.as_str() {
+                "=" => Token {
+                    kind: TokenKind::Assign,
+                    ..token
+                },
+                "." => Token {
+                    kind: TokenKind::Dot,
+                    ..token
+                },
+                ":" => Token {
+                    kind: TokenKind::Colon,
+                    ..token
+                },
+                "&" => Token {
+                    kind: TokenKind::Pointer,
+                    ..token
+                },
+                "*" => Token {
+                    kind: TokenKind::Deref,
+                    ..token
+                },
+                _ => token,
+            },
+            _ => token,
+        })
+        .collect::<Vec<Token>>();
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input_rc.clone(), path.clone());
@@ -236,8 +250,6 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     let mut range = 0..0;
     let mut context = Rc::new("".to_string());
     let error_src = input.clone();
-    let len = tokens.len();
-    let folder = OperatorFolder::new(len);
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
@@ -264,122 +276,39 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .fold(folder, |acc, token| acc.fold(token))
-        .tokens;
+        .map(|token| match &token.kind {
+            TokenKind::Operator(s) => match s.as_str() {
+                "=" => Token {
+                    kind: TokenKind::Assign,
+                    ..token
+                },
+                "." => Token {
+                    kind: TokenKind::Dot,
+                    ..token
+                },
+                ":" => Token {
+                    kind: TokenKind::Colon,
+                    ..token
+                },
+                "&" => Token {
+                    kind: TokenKind::Pointer,
+                    ..token
+                },
+                "*" => Token {
+                    kind: TokenKind::Deref,
+                    ..token
+                },
+                _ => token,
+            },
+            _ => token,
+        })
+        .collect::<Vec<Token>>();
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input.clone(), refcounted_file_path.clone());
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
     return Ok(parsed_output);
-}
-
-mod operators {
-    use super::*;
-
-    #[derive(Debug, Clone, Copy)]
-    enum PrevToken {
-        Deref,
-        Pointer,
-        Other,
-    }
-
-    #[derive(Debug)]
-    pub struct OperatorFolder {
-        pub tokens: Vec<Token>,
-        current: Option<Token>,
-        prev: PrevToken,
-    }
-
-    impl OperatorFolder {
-        pub fn new(size: usize) -> Self {
-            OperatorFolder {
-                tokens: Vec::with_capacity(size),
-                current: None,
-                prev: PrevToken::Other,
-            }
-        }
-
-        pub fn fold(mut self, token: Token) -> Self {
-            match &token.kind {
-                TokenKind::Operator(op) => match self.current.as_ref().map(|x| x.kind.clone()) {
-                    Some(TokenKind::Operator(current_op)) => {
-                        self.current = Some(Token {
-                            kind: TokenKind::Operator(format!("{}{}", current_op, op)),
-                            ..self.current.unwrap()
-                        });
-                        self.prev = PrevToken::Other;
-                        self
-                    }
-                    None => {
-                        self.current = Some(token);
-                        self.prev = PrevToken::Other;
-                        self
-                    }
-                    _ => panic!(),
-                },
-                TokenKind::Deref => match self.current.as_ref().map(|x| x.kind.clone()) {
-                    Some(TokenKind::Operator(current_op)) => {
-                        self.current = Some(Token {
-                            kind: TokenKind::Operator(format!("{}{}", current_op, "*")),
-                            ..self.current.unwrap()
-                        });
-                        self.prev = PrevToken::Other;
-                        self
-                    }
-                    None => {
-                        self.current = Some(Token {
-                            kind: TokenKind::op("*"),
-                            ..token
-                        });
-                        self.prev = PrevToken::Deref;
-                        self
-                    }
-                    _ => panic!(),
-                },
-                TokenKind::Pointer => match self.current.as_ref().map(|x| x.kind.clone()) {
-                    Some(TokenKind::Operator(current_op)) => {
-                        self.current = Some(Token {
-                            kind: TokenKind::Operator(format!("{}{}", current_op, "&")),
-                            ..self.current.unwrap()
-                        });
-                        self.prev = PrevToken::Other;
-                        self
-                    }
-                    None => {
-                        self.current = Some(Token {
-                            kind: TokenKind::op("&"),
-                            ..token
-                        });
-                        self.prev = PrevToken::Pointer;
-                        self
-                    }
-                    _ => panic!(),
-                },
-                _ => {
-                    let current = self.current;
-                    self.current = None;
-                    match (self.prev, &current) {
-                        (PrevToken::Other, Some(c)) => {
-                            self.tokens.push(c.clone());
-                            self.current = None;
-                        }
-                        (PrevToken::Deref, Some(c)) => self.tokens.push(Token {
-                            kind: TokenKind::Deref,
-                            ..c.clone()
-                        }),
-                        (PrevToken::Pointer, Some(c)) => self.tokens.push(Token {
-                            kind: TokenKind::Pointer,
-                            ..c.clone()
-                        }),
-                        _ => {}
-                    }
-                    self.tokens.push(token);
-                    self
-                }
-            }
-        }
-    }
 }
 
 struct WhiteSpaceParser {
