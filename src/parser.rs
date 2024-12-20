@@ -104,6 +104,10 @@ fn assign(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
     token(TokenKind::Assign, path).labelled("Assign").ignored()
 }
 
+fn pipe(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
+    token(TokenKind::op("|"), path).ignored()
+}
+
 fn unit(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
     (lparen(path).then(rparen(path))).ignored().labelled("Unit")
 }
@@ -316,7 +320,7 @@ fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    let variant_case = token(TokenKind::op("|"), "Variant Definition")
+    let variant_case = pipe("Variant Definition")
         .ignore_then(ident_token())
         .then(
             token(TokenKind::Of, "Variant Definition")
@@ -354,10 +358,24 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         .labelled("Type Definition")
 }
 
-fn match_parser<'a>(
+fn match_expr<'a>(
     expr: BoxedParser<'a, Token, Expr, Simple<Token>>,
 ) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
-    token(TokenKind::Match, "Match Expression")
+    let match_handler = pipe("Match Expression");
+
+    let first_elem = choice([
+        token(TokenKind::Match, "Match Expression")
+            .ignore_then(expr.clone())
+            .then_ignore(token(TokenKind::With, "Match Expression"))
+            .map(Some)
+            .boxed(),
+        token(TokenKind::FunctionMatch, "Match Expr")
+            .map(|_| None)
+            .boxed(),
+    ]);
+
+    first_elem
+        .then_ignore(indent("Match Expression").or_not())
         .map(|_| Expr::Identifier(IdentifierType::Bucket))
         .boxed()
 }
@@ -366,7 +384,7 @@ fn expr<'a>(
     stmt: BoxedParser<'a, Token, Stmt, Simple<Token>>,
 ) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
     recursive(move |expr| {
-        let match_parser = match_parser(expr.clone().boxed());
+        let match_expr = match_expr(expr.clone().boxed());
         let array_literal = (expr.clone().separated_by(
             semicolon("Array Literal")
                 .or(newline("Array Literal"))
@@ -533,6 +551,7 @@ fn expr<'a>(
 
         choice((
             if_expr,
+            match_expr.boxed(),
             block_expr.boxed(),
             func_call.boxed(),
             chain_expr,
@@ -1229,6 +1248,9 @@ x + 5
 (\"test\") + \"Hello\"
 x.InsideValue -
 	5 + 2 % 3
+x
+|> testFunc
+|> _.Value
 ";
         let tokens = lex_input(
             input,
@@ -1256,6 +1278,16 @@ x.InsideValue -
                 TokenKind::num("3"),
                 TokenKind::NewLine,
                 TokenKind::Dedent,
+                TokenKind::ident("x"),
+                TokenKind::NewLine,
+                TokenKind::op("|>"),
+                TokenKind::ident("testFunc"),
+                TokenKind::NewLine,
+                TokenKind::op("|>"),
+                TokenKind::ident("_"),
+                TokenKind::Dot,
+                TokenKind::ident("Value"),
+                TokenKind::NewLine,
             ],
         );
         let _ = match_output(
@@ -1301,6 +1333,28 @@ x.InsideValue -
                                 },
                             ],
                         })]),
+                    ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "|>".to_string(),
+                    args: vec![
+                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                        Expr::FunctionCall {
+                            name: "|>".to_string(),
+                            args: vec![
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    "testFunc".to_string(),
+                                    None,
+                                )),
+                                Expr::Accessor {
+                                    left: Box::new(Expr::Identifier(IdentifierType::Bucket)),
+                                    right: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                        "Value".to_string(),
+                                        None,
+                                    ))),
+                                },
+                            ],
+                        },
                     ],
                 })),
             ],

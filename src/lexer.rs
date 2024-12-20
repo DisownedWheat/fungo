@@ -40,6 +40,8 @@ pub enum TokenKind {
     False,
     #[token("match")]
     Match,
+    #[token("function")]
+    FunctionMatch,
     #[token("with")]
     With,
     #[token("when")]
