@@ -1,26 +1,25 @@
 use chumsky::prelude::Parser;
 use colored::*;
+use fungo::lexer::lex;
+use fungo::parser::{error_report, parser};
 use serde_json::to_string_pretty;
-mod ast;
-mod lexer;
-mod parser;
 
 fn main() {
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
         .init();
-    let tokens = lexer::lex("./test_file").unwrap();
+    let tokens = lex("./test_file").unwrap();
     for tok in &tokens {
         log::info!("{:?}", tok.0);
     }
-    match parser::parser().parse(tokens) {
+    match parser().parse(tokens) {
         Ok(ast) => {
             let pretty = to_string_pretty(&ast).unwrap();
             println!("{}", pretty.cyan());
         }
         Err(e) => {
             e.iter().for_each(|e| {
-                parser::error_report(e);
+                error_report(e);
             });
         }
     }
