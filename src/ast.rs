@@ -143,9 +143,9 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    Index {
-        left: Box<Expr>,
-        right: Box<Expr>,
+    Lambda {
+        args: Vec<IdentifierType>,
+        body: Box<Expr>,
     },
 }
 

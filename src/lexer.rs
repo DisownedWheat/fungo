@@ -86,8 +86,6 @@ pub enum TokenKind {
     Deref,
     #[token("<-")]
     ChannelAssign,
-    #[token("->")]
-    ReturnType,
     #[regex(r"\n")]
     NewLine,
     #[regex(r"\t")]
@@ -543,6 +541,7 @@ let x =
     fn lexer_operators() {
         setup();
         let input = "
+let x = 1
 x * 2.051
 *a ++ 5
 b && c
@@ -550,8 +549,13 @@ b && c
 ";
 
         let expected_output = vec![
+            TokenKind::Let,
             TokenKind::ident("x"),
-            TokenKind::Deref,
+            TokenKind::Assign,
+            TokenKind::num("1"),
+            TokenKind::NewLine,
+            TokenKind::ident("x"),
+            TokenKind::op("*"),
             TokenKind::num("2.051"),
             TokenKind::NewLine,
             TokenKind::Deref,
@@ -564,17 +568,13 @@ b && c
             TokenKind::ident("c"),
             TokenKind::NewLine,
             TokenKind::num("5"),
-            TokenKind::Deref,
+            TokenKind::op("*"),
             TokenKind::ident("x"),
             TokenKind::NewLine,
         ];
         let output = lex_raw(input);
         assert!(output.is_ok());
-        let kinds: Vec<TokenKind> = output
-            .unwrap()
-            .into_iter()
-            .map(|Token { kind, .. }| kind)
-            .collect();
+        let kinds: Vec<TokenKind> = output.unwrap().into_iter().map(|(kind, _)| kind).collect();
         assert_eq!(kinds, expected_output);
     }
 }

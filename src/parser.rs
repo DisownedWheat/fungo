@@ -588,16 +588,72 @@ fn expr<'a>(
             ))
             .or_not(),
         )
-        .map(|(left, is_op)| match is_op {
-            Some((op, right)) => Expr::FunctionCall {
-                name: op,
-                args: vec![left, right],
-            },
-            None => left,
-        })
+        .map(map_binary_expr)
     })
     .labelled("Expression")
     .boxed()
+}
+
+// Recursively reverse the order of function calls to make it easier to evaluate later
+fn map_binary_expr((left, right): (Expr, Option<(String, Expr)>)) -> Expr {
+    if let Some((name, expression)) = right {
+        match name.as_str() {
+            "->" => map_lambda(left, expression),
+            _ => match expression {
+                Expr::FunctionCall {
+                    name: inner_name,
+                    mut args,
+                } => {
+                    let second_func_right_arg = args.pop().unwrap();
+                    let second_func_left_arg = args.pop().unwrap();
+                    Expr::FunctionCall {
+                        name: inner_name,
+                        args: vec![
+                            map_binary_expr((left, Some((name, second_func_left_arg)))),
+                            second_func_right_arg,
+                        ],
+                    }
+                }
+                _ => Expr::FunctionCall {
+                    name,
+                    args: vec![left, expression],
+                },
+            },
+        }
+    } else {
+        left
+    }
+}
+
+// Handle lambda syntax
+fn map_lambda(left: Expr, right: Expr) -> Expr {
+    let args = match left {
+        Expr::TupleLiteral(args) => args
+            .into_iter()
+            .map(|arg| {
+                match arg {
+                    Expr::Identifier(x @ IdentifierType::Identifier(_, _))
+                    | Expr::Identifier(x @ IdentifierType::Bucket) => x,
+                    // TODO: Make something nice here
+                    _ => panic!(),
+                }
+            })
+            .collect(),
+        Expr::Identifier(ident) => match ident {
+            x @ IdentifierType::Identifier(_, _)
+            | x @ IdentifierType::Unit
+            | x @ IdentifierType::Pointer(_)
+            | x @ IdentifierType::Bucket => vec![x],
+            // TODO: Handle errors when incorrect identifier used
+            _ => panic!(),
+        },
+        // TODO: Handle errors when tuples or identifiers aren't used as lambda args
+        _ => panic!(),
+    };
+    Expr::Lambda {
+        args,
+        body: Box::new(right),
+    }
 }
 
 fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
@@ -1258,19 +1314,23 @@ type Test2 = | Test	| Testing of int
     fn test_binary_expr() {
         setup();
         let input = "
-x + 5
+x * 5
 (\"test\") + \"Hello\"
 x.InsideValue -
 	5 + 2 % 3
 x
 |> testFunc
 |> _.Value
+5 + *test
+|> square
+|| sqrt
+x *y
 ";
         let tokens = lex_input(
             input,
             vec![
                 TokenKind::ident("x"),
-                TokenKind::op("+"),
+                TokenKind::op("*"),
                 TokenKind::num("5"),
                 TokenKind::NewLine,
                 TokenKind::LParen,
@@ -1302,13 +1362,28 @@ x
                 TokenKind::Dot,
                 TokenKind::ident("Value"),
                 TokenKind::NewLine,
+                TokenKind::num("5"),
+                TokenKind::op("+"),
+                TokenKind::Deref,
+                TokenKind::ident("test"),
+                TokenKind::NewLine,
+                TokenKind::op("|>"),
+                TokenKind::ident("square"),
+                TokenKind::NewLine,
+                TokenKind::op("||"),
+                TokenKind::ident("sqrt"),
+                TokenKind::NewLine,
+                TokenKind::ident("x"),
+                TokenKind::Deref,
+                TokenKind::ident("y"),
+                TokenKind::NewLine,
             ],
         );
         let _ = match_output(
             tokens,
             vec![
                 TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: "*".to_string(),
                     args: vec![
                         Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
                         Expr::IntLiteral("5".to_string()),
@@ -1335,16 +1410,16 @@ x
                             ))),
                         },
                         Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                            name: "+".to_string(),
+                            name: "%".to_string(),
                             args: vec![
-                                Expr::IntLiteral("5".to_string()),
                                 Expr::FunctionCall {
-                                    name: "%".to_string(),
+                                    name: "+".to_string(),
                                     args: vec![
+                                        Expr::IntLiteral("5".to_string()),
                                         Expr::IntLiteral("2".to_string()),
-                                        Expr::IntLiteral("3".to_string()),
                                     ],
                                 },
+                                Expr::IntLiteral("3".to_string()),
                             ],
                         })]),
                     ],
@@ -1352,24 +1427,54 @@ x
                 TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
                     name: "|>".to_string(),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
                         Expr::FunctionCall {
                             name: "|>".to_string(),
                             args: vec![
+                                Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
                                 Expr::Identifier(IdentifierType::Identifier(
                                     "testFunc".to_string(),
                                     None,
                                 )),
-                                Expr::Accessor {
-                                    left: Box::new(Expr::Identifier(IdentifierType::Bucket)),
-                                    right: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                                        "Value".to_string(),
-                                        None,
-                                    ))),
-                                },
                             ],
                         },
+                        Expr::Accessor {
+                            left: Box::new(Expr::Identifier(IdentifierType::Bucket)),
+                            right: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                                "Value".to_string(),
+                                None,
+                            ))),
+                        },
                     ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "||".to_string(),
+                    args: vec![
+                        Expr::FunctionCall {
+                            name: "|>".to_string(),
+                            args: vec![
+                                Expr::FunctionCall {
+                                    name: "+".to_string(),
+                                    args: vec![
+                                        Expr::IntLiteral("5".to_string()),
+                                        Expr::Identifier(IdentifierType::Deref(Box::new(
+                                            IdentifierType::Identifier("test".to_string(), None),
+                                        ))),
+                                    ],
+                                },
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    "square".to_string(),
+                                    None,
+                                )),
+                            ],
+                        },
+                        Expr::Identifier(IdentifierType::Identifier("sqrt".to_string(), None)),
+                    ],
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                    name: "x".to_string(),
+                    args: vec![Expr::Identifier(IdentifierType::Deref(Box::new(
+                        IdentifierType::Identifier("y".to_string(), None),
+                    )))],
                 })),
             ],
         );
@@ -1534,7 +1639,7 @@ let testFunc x (y: int) z =
                 TokenKind::num("1"),
                 TokenKind::NewLine,
                 TokenKind::ident("result"),
-                TokenKind::Deref,
+                TokenKind::op("*"),
                 TokenKind::ident("z"),
                 TokenKind::NewLine,
                 TokenKind::Dedent,
@@ -1907,16 +2012,19 @@ else
                 })),
                 TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                     condition: Box::new(Expr::FunctionCall {
-                        name: "+".to_string(),
+                        name: "=".to_string(),
                         args: vec![
-                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
                             Expr::FunctionCall {
-                                name: "=".to_string(),
+                                name: "+".to_string(),
                                 args: vec![
+                                    Expr::Identifier(IdentifierType::Identifier(
+                                        "x".to_string(),
+                                        None,
+                                    )),
                                     Expr::IntLiteral("1".to_string()),
-                                    Expr::IntLiteral("5".to_string()),
                                 ],
                             },
+                            Expr::IntLiteral("5".to_string()),
                         ],
                     }),
                     consequent: Box::new(Expr::Identifier(IdentifierType::Identifier(
@@ -2001,5 +2109,139 @@ else
                 })),
             ],
         );
+    }
+
+    #[test]
+    fn test_indexing() {
+        setup();
+        let input = "
+arr.[1]
+map.[\"Hello\"]
+(x + 5 |> toSlice).[0]
+arr.[5 * 10]
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::ident("arr"),
+                TokenKind::Dot,
+                TokenKind::LBracket,
+                TokenKind::num("1"),
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+                TokenKind::ident("map"),
+                TokenKind::Dot,
+                TokenKind::LBracket,
+                TokenKind::str("Hello"),
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+                TokenKind::LParen,
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::num("5"),
+                TokenKind::op("|>"),
+                TokenKind::ident("toSlice"),
+                TokenKind::RParen,
+                TokenKind::Dot,
+                TokenKind::LBracket,
+                TokenKind::num("0"),
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+                TokenKind::ident("arr"),
+                TokenKind::Dot,
+                TokenKind::LBracket,
+                TokenKind::num("5"),
+                TokenKind::op("*"),
+                TokenKind::num("10"),
+                TokenKind::RBracket,
+                TokenKind::NewLine,
+            ],
+        );
+
+        let _ = match_output(
+            tokens,
+            vec![
+                TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
+                    left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "arr".to_string(),
+                        None,
+                    ))),
+                    right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral("1".to_string())])),
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
+                    left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "map".to_string(),
+                        None,
+                    ))),
+                    right: Box::new(Expr::ArrayLiteral(vec![Expr::StringLiteral(
+                        "Hello".to_string(),
+                    )])),
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
+                    left: Box::new(Expr::FunctionCall {
+                        name: "|>".to_string(),
+                        args: vec![
+                            Expr::FunctionCall {
+                                name: "+".to_string(),
+                                args: vec![
+                                    Expr::Identifier(IdentifierType::Identifier(
+                                        "x".to_string(),
+                                        None,
+                                    )),
+                                    Expr::IntLiteral("5".to_string()),
+                                ],
+                            },
+                            Expr::Identifier(IdentifierType::Identifier(
+                                "toSlice".to_string(),
+                                None,
+                            )),
+                        ],
+                    }),
+                    right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral("0".to_string())])),
+                })),
+                TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
+                    left: Box::new(Expr::Identifier(IdentifierType::Identifier(
+                        "arr".to_string(),
+                        None,
+                    ))),
+                    right: Box::new(Expr::ArrayLiteral(vec![Expr::FunctionCall {
+                        name: "*".to_string(),
+                        args: vec![
+                            Expr::IntLiteral("5".to_string()),
+                            Expr::IntLiteral("10".to_string()),
+                        ],
+                    }])),
+                })),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_lambda() {
+        setup();
+        let input = "
+(x, y) -> x + y
+x ->
+	square x
+_ -> 5
+(_, x) -> x + 5
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::LParen,
+                TokenKind::ident("x"),
+                TokenKind::Comma,
+                TokenKind::ident("y"),
+                TokenKind::RParen,
+                TokenKind::op("->"),
+                TokenKind::ident("x"),
+                TokenKind::op("+"),
+                TokenKind::ident("y"),
+                TokenKind::NewLine,
+            ],
+        );
+
+        let output = parse_input(tokens);
     }
 }
