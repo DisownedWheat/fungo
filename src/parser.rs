@@ -1,17 +1,19 @@
+use crate::lexer::TokenState;
+
 use super::ast::*;
 use super::lexer::{Token, TokenKind};
 use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::prelude::*;
 
 fn token(kind: TokenKind, path: &str) -> BoxedParser<'_, Token, Token, Simple<Token>> {
-    filter(move |token: &Token| {
+    filter(move |(inner_kind, _): &Token| {
         log::debug!(
             "Inside {} matching token {:?} against {:?}",
             path,
-            token.kind,
+            inner_kind,
             kind
         );
-        token.kind == kind
+        inner_kind == &kind
     })
     .boxed()
 }
@@ -25,14 +27,18 @@ enum StrValueType {
 }
 
 fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Token>> {
-    filter_map(move |span, token: Token| {
-        log::debug!("Attempting to match {:?} as {:?}", token.kind, t_);
-        match (t_, token.kind.clone()) {
+    filter_map(move |span, (kind, state): Token| {
+        log::debug!("Attempting to match {:?} as {:?}", kind, t_);
+        match (t_, kind.clone()) {
             (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
             (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
             (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
             (StrValueType::Operator, TokenKind::Operator(s)) => Ok(s),
-            _ => Err(Simple::expected_input_found(span, Vec::new(), Some(token))),
+            _ => Err(Simple::expected_input_found(
+                span,
+                Vec::new(),
+                Some((kind, state)),
+            )),
         }
     })
     .labelled("Identifier")
@@ -119,6 +125,13 @@ fn pointer(path: &'static str) -> impl Parser<Token, bool, Error = Simple<Token>
         .labelled("Pointer")
 }
 
+fn deref(path: &'static str) -> impl Parser<Token, bool, Error = Simple<Token>> {
+    token(TokenKind::Deref, path)
+        .or_not()
+        .map(|x| x.is_some())
+        .labelled("Deref")
+}
+
 fn import(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>> {
     token(TokenKind::Import, path).labelled("import")
 }
@@ -147,7 +160,7 @@ fn digit() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 
 fn bool(path: &'static str) -> impl Parser<Token, Expr, Error = Simple<Token>> {
     choice((token(TokenKind::True, path), token(TokenKind::False, path)))
-        .map(|Token { kind, .. }| match kind {
+        .map(|(kind, _)| match kind {
             TokenKind::True => true,
             TokenKind::False => false,
             _ => panic!(),
@@ -200,13 +213,20 @@ fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
 }
 
 fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
-    let base_ident = pointer("Ident")
+    let base_ident = (pointer("Ident").then(deref("Ident")))
         .then(ident_token())
-        .map(|(is_pointer, s)| match (is_pointer, s.as_str()) {
-            (false, "_") => IdentifierType::Bucket,
-            (true, _) => IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None))),
-            _ => IdentifierType::Identifier(s, None),
-        })
+        .map(
+            |((is_pointer, is_deref), s)| match (is_pointer, is_deref, s.as_str()) {
+                (false, false, "_") => IdentifierType::Bucket,
+                (true, false, _) => {
+                    IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None)))
+                }
+                (false, true, _) => {
+                    IdentifierType::Deref(Box::new(IdentifierType::Identifier(s, None)))
+                }
+                _ => IdentifierType::Identifier(s, None),
+            },
+        )
         .labelled("Ident")
         .boxed();
 
@@ -545,7 +565,7 @@ fn expr<'a>(
 
         let binary_op = choice((
             identifier(StrValueType::Operator),
-            (token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string())).boxed(),
+            // (token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string())).boxed(),
             assign("Binary Expr").to("=".to_string()).boxed(),
         ));
 
@@ -786,13 +806,7 @@ pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
 }
 
 pub fn error_report(err: &Simple<Token>) {
-    if let Some(Token {
-        kind,
-        span,
-        source,
-        file,
-    }) = err.found()
-    {
+    if let Some((kind, TokenState { span, source, file })) = err.found() {
         let expected = err.expected().into_iter().map(|x| x).collect::<Vec<_>>();
         log::error!("Unexpected token: {:?}", kind);
         log::error!("Expected: {:?}", expected);
@@ -835,7 +849,7 @@ mod test {
     }
 
     fn map_kinds(tokens: &Vec<lexer::Token>) -> Vec<lexer::TokenKind> {
-        tokens.iter().map(|x| x.kind.clone()).collect()
+        tokens.iter().map(|(kind, _)| kind.clone()).collect()
     }
 
     fn lex_input(input: &str, expected: Vec<TokenKind>) -> Vec<Token> {

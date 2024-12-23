@@ -133,12 +133,48 @@ impl Display for LexerError {
 
 impl Error for LexerError {}
 
+pub type Token = (TokenKind, TokenState);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Token {
-    pub kind: TokenKind,
+pub struct TokenState {
     pub span: Span,
     pub source: Rc<String>,
     pub file: Rc<String>,
+}
+
+#[derive(Default)]
+struct OpFolder {
+    prev: Option<TokenState>,
+    tokens: Vec<Token>,
+}
+
+impl OpFolder {
+    fn push_token(mut self, (kind, state): Token) -> Self {
+        match &kind {
+            TokenKind::Operator(s) => match s.as_str() {
+                "=" => self.tokens.push((TokenKind::Assign, state)),
+                "." => self.tokens.push((TokenKind::Dot, state)),
+                ":" => self.tokens.push((TokenKind::Colon, state)),
+                "&" => self.tokens.push((TokenKind::Pointer, state)),
+                "*" => self.prev = Some(state),
+                _ => self.tokens.push((kind, state)),
+            },
+            TokenKind::Space | TokenKind::Tab if self.prev.is_some() => {
+                let prev = self.prev.unwrap();
+                self.tokens
+                    .push((TokenKind::Operator("*".to_string()), prev));
+                self.prev = None;
+                self.tokens.push((kind, state));
+            }
+            _ => {
+                if let Some(tok) = self.prev {
+                    self.tokens.push((TokenKind::Deref, tok));
+                    self.prev = None;
+                }
+                self.tokens.push((kind, state));
+            }
+        };
+        self
+    }
 }
 
 pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
@@ -150,12 +186,14 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
     while let Some(token) = lexer.next() {
         let span = lexer.span();
         match token {
-            Ok(x) => tokens.push(Ok(Token {
-                kind: x,
-                span,
-                source: input_rc.clone(),
-                file: path.clone(),
-            })),
+            Ok(x) => tokens.push(Ok((
+                x,
+                TokenState {
+                    span,
+                    source: input_rc.clone(),
+                    file: path.clone(),
+                },
+            ))),
             Err(_) => tokens.push(Err(())),
         }
     }
@@ -165,7 +203,7 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
-            Ok(x) => {
+            Ok((_, x)) => {
                 context = x.file.clone();
                 range = x.span.clone();
                 true
@@ -188,33 +226,8 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .map(|token| match &token.kind {
-            TokenKind::Operator(s) => match s.as_str() {
-                "=" => Token {
-                    kind: TokenKind::Assign,
-                    ..token
-                },
-                "." => Token {
-                    kind: TokenKind::Dot,
-                    ..token
-                },
-                ":" => Token {
-                    kind: TokenKind::Colon,
-                    ..token
-                },
-                "&" => Token {
-                    kind: TokenKind::Pointer,
-                    ..token
-                },
-                "*" => Token {
-                    kind: TokenKind::Deref,
-                    ..token
-                },
-                _ => token,
-            },
-            _ => token,
-        })
-        .collect::<Vec<Token>>();
+        .fold(OpFolder::default(), |acc, token| acc.push_token(token))
+        .tokens;
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input_rc.clone(), path.clone());
@@ -237,12 +250,14 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     while let Some(token) = lexer.next() {
         let span = lexer.span();
         match token {
-            Ok(x) => tokens.push(Ok(Token {
-                kind: x,
-                span,
-                source: input.clone(),
-                file: refcounted_file_path.clone(),
-            })),
+            Ok(x) => tokens.push(Ok((
+                x,
+                TokenState {
+                    span,
+                    source: input.clone(),
+                    file: refcounted_file_path.clone(),
+                },
+            ))),
             Err(_) => tokens.push(Err(())),
         }
     }
@@ -255,7 +270,7 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
     let filtered_tokens = tokens
         .into_iter()
         .filter(move |token| match token {
-            Ok(x) => {
+            Ok((_, x)) => {
                 context = x.file.clone();
                 range = x.span.clone();
                 true
@@ -278,33 +293,8 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
             }
         })
         .map(|token| token.unwrap())
-        .map(|token| match &token.kind {
-            TokenKind::Operator(s) => match s.as_str() {
-                "=" => Token {
-                    kind: TokenKind::Assign,
-                    ..token
-                },
-                "." => Token {
-                    kind: TokenKind::Dot,
-                    ..token
-                },
-                ":" => Token {
-                    kind: TokenKind::Colon,
-                    ..token
-                },
-                "&" => Token {
-                    kind: TokenKind::Pointer,
-                    ..token
-                },
-                "*" => Token {
-                    kind: TokenKind::Deref,
-                    ..token
-                },
-                _ => token,
-            },
-            _ => token,
-        })
-        .collect::<Vec<Token>>();
+        .fold(OpFolder::default(), |acc, token| acc.push_token(token))
+        .tokens;
 
     let mut whitespace_parser =
         WhiteSpaceParser::new(filtered_tokens, input.clone(), refcounted_file_path.clone());
@@ -342,22 +332,26 @@ impl WhiteSpaceParser {
     }
 
     fn push_indent(&mut self) {
-        let token = Token {
-            kind: TokenKind::Indent,
-            span: self.span.clone(),
-            source: self.source.clone(),
-            file: self.file_name.clone(),
-        };
+        let token = (
+            TokenKind::Indent,
+            TokenState {
+                span: self.span.clone(),
+                source: self.source.clone(),
+                file: self.file_name.clone(),
+            },
+        );
         self.output.push(token);
     }
 
     fn push_dedent(&mut self) {
-        let token = Token {
-            kind: TokenKind::Dedent,
-            span: self.span.clone(),
-            source: self.source.clone(),
-            file: self.file_name.clone(),
-        };
+        let token = (
+            TokenKind::Dedent,
+            TokenState {
+                span: self.span.clone(),
+                source: self.source.clone(),
+                file: self.file_name.clone(),
+            },
+        );
         self.output.push(token);
     }
 
@@ -369,11 +363,11 @@ impl WhiteSpaceParser {
     }
 
     fn pop_token(&mut self) -> Option<Token> {
-        if let Some(token) = self.input.pop() {
-            let span = token.span.clone();
+        if let Some((kind, state)) = self.input.pop() {
+            let span = state.span.clone();
             self.span = span;
-            self.current_token = Some(token.clone().kind);
-            Some(token)
+            self.current_token = Some(kind.clone());
+            Some((kind, state))
         } else {
             None
         }
@@ -381,15 +375,15 @@ impl WhiteSpaceParser {
 
     pub fn parse(&mut self) {
         while let Some(current) = self.pop_token() {
-            let Token { kind, .. } = &current;
+            let (kind, _) = &current;
             match kind {
                 &TokenKind::NewLine => {
                     if self.output.len() == 0 {
                         continue;
                     }
                     self.output.push(current);
-                    while let Some(current) = self.pop_token() {
-                        let tok = &current.kind;
+                    while let Some((kind, state)) = self.pop_token() {
+                        let tok = &kind;
                         match tok {
                             &TokenKind::NewLine => continue,
 
@@ -421,7 +415,7 @@ impl WhiteSpaceParser {
 
                             _ => {
                                 self.pop_to_root();
-                                self.output.push(current);
+                                self.output.push((kind, state));
                                 break;
                             }
                         }
@@ -438,7 +432,7 @@ impl WhiteSpaceParser {
     fn parse_spaces(&mut self) -> (Token, usize) {
         let mut indent = 1;
         while let Some(current) = self.pop_token() {
-            let Token { kind, .. } = &current;
+            let (kind, _) = &current;
             match kind {
                 &TokenKind::Tab => {
                     self.build_error_report(kind, "Found tab when parsing spaces");
@@ -458,7 +452,7 @@ impl WhiteSpaceParser {
     fn parse_tabs(&mut self) -> (Token, usize) {
         let mut indent = 1;
         while let Some(current) = self.pop_token() {
-            let Token { kind, .. } = &current;
+            let (kind, _) = &current;
             match kind {
                 TokenKind::Space => {
                     self.build_error_report(kind, "Found space when parsing tabs");
@@ -541,11 +535,7 @@ let x =
         ];
         let output = lex_raw(input);
         assert!(output.is_ok());
-        let kinds: Vec<TokenKind> = output
-            .unwrap()
-            .into_iter()
-            .map(|Token { kind, .. }| kind)
-            .collect();
+        let kinds: Vec<TokenKind> = output.unwrap().into_iter().map(|(kind, _)| kind).collect();
         assert_eq!(kinds, expected_output);
     }
 

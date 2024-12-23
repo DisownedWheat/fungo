@@ -11,7 +11,7 @@ fn main() {
         .init();
     let tokens = lexer::lex("./test_file").unwrap();
     for tok in &tokens {
-        log::info!("{:?}", tok.kind);
+        log::info!("{:?}", tok.0);
     }
     match parser::parser().parse(tokens) {
         Ok(ast) => {
