@@ -56,6 +56,9 @@ pub enum TokenKind {
     Mut,
     #[token("module")]
     Module,
+    #[token("fun")]
+    Lambda,
+
 
     #[regex(r"[\+\-\|\/\%\^<>=.&\*:]+", |lex| lex.slice().to_string())]
     Operator(String),

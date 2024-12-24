@@ -145,6 +145,7 @@ pub enum Expr {
     },
     Lambda {
         args: Vec<IdentifierType>,
+        return_type: Option<Type>,
         body: Box<Expr>,
     },
 }

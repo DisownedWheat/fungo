@@ -1318,15 +1318,16 @@ arr.[5 * 10]
 fn test_lambda() {
     setup();
     let input = "
-(x, y) -> x + y
-x ->
+fun (x, y) -> x + y
+fun x ->
 	square x
-_ -> 5
-(_, (x: int)) -> x + 5
+fun _ -> 5
+fun _ (x: int) -> x + 5
 ";
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::Lambda,
             TokenKind::LParen,
             TokenKind::ident("x"),
             TokenKind::Comma,
@@ -1337,6 +1338,7 @@ _ -> 5
             TokenKind::op("+"),
             TokenKind::ident("y"),
             TokenKind::NewLine,
+            TokenKind::Lambda,
             TokenKind::ident("x"),
             TokenKind::op("->"),
             TokenKind::NewLine,
@@ -1345,18 +1347,17 @@ _ -> 5
             TokenKind::ident("x"),
             TokenKind::NewLine,
             TokenKind::Dedent,
+            TokenKind::Lambda,
             TokenKind::ident("_"),
             TokenKind::op("->"),
             TokenKind::num("5"),
             TokenKind::NewLine,
-            TokenKind::LParen,
+            TokenKind::Lambda,
             TokenKind::ident("_"),
-            TokenKind::Comma,
             TokenKind::LParen,
             TokenKind::ident("x"),
             TokenKind::Colon,
             TokenKind::ident("int"),
-            TokenKind::RParen,
             TokenKind::RParen,
             TokenKind::op("->"),
             TokenKind::ident("x"),
@@ -1370,10 +1371,14 @@ _ -> 5
         tokens,
         vec![
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
-                args: vec![
-                    IdentifierType::Identifier("x".to_string(), None),
-                    IdentifierType::Identifier("y".to_string(), None),
-                ],
+                args: vec![IdentifierType::TupleDestructure(
+                    vec![
+                        IdentifierType::Identifier("x".to_string(), None),
+                        IdentifierType::Identifier("y".to_string(), None),
+                    ],
+                    None,
+                )],
+                return_type: None,
                 body: Box::new(Expr::FunctionCall {
                     name: "+".to_string(),
                     args: vec![
@@ -1384,6 +1389,7 @@ _ -> 5
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
                 args: vec![IdentifierType::Identifier("x".to_string(), None)],
+                return_type: None,
                 body: Box::new(Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
                     name: "square".to_string(),
                     args: vec![Expr::Identifier(IdentifierType::Identifier(
@@ -1394,6 +1400,7 @@ _ -> 5
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
                 args: vec![IdentifierType::Bucket],
+                return_type: None,
                 body: Box::new(Expr::IntLiteral("5".to_string())),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
@@ -1407,6 +1414,7 @@ _ -> 5
                         }),
                     ),
                 ],
+                return_type: None,
                 body: Box::new(Expr::FunctionCall {
                     name: "+".to_string(),
                     args: vec![

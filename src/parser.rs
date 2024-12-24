@@ -169,8 +169,31 @@ fn bool(path: &'static str) -> impl Parser<Token, Expr, Error = Simple<Token>> {
         .labelled("Bool Literal")
 }
 
-fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
-    let t = recursive(move |t| {
+fn record_destructure() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
+    lbrace("Record Destructure")
+        .ignore_then(ident().separated_by(comma("Record Destructure")))
+        .then_ignore(rbrace("Record Destructure"))
+        .map(|s| (IdentifierType::RecordDestructure(s, None)))
+}
+
+fn array_destructure() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
+    lbracket("Array Destructure")
+        .ignore_then(ident().separated_by(comma("Array Destructure")))
+        .then_ignore(rparen("Array Destructure"))
+        .map(|s| IdentifierType::ArrayDestructure(s, None))
+        .labelled("Array Destructure")
+}
+
+fn tuple_destructure() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
+    lparen("Tuple Destructure")
+        .ignore_then(ident().separated_by(comma("Tuple Destructure")))
+        .then_ignore(rparen("Tuple Destructure"))
+        .map(|s| IdentifierType::TupleDestructure(s, None))
+        .labelled("Tuple Destructure")
+}
+
+fn type_literal() -> impl Parser<Token, Type, Error = Simple<Token>> {
+    recursive(move |t| {
         choice((
             unit("Type literal").map(|_| Type::Unit),
             token(TokenKind::Deref, "type literal")
@@ -207,9 +230,7 @@ fn type_literal() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
                 }),
         ))
     })
-    .map(|x| TypeDef::Type(x))
-    .labelled("Type Literal");
-    t
+    .labelled("Type Literal")
 }
 
 fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
@@ -237,15 +258,12 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
             .then_ignore(colon("Ident"))
             .then(type_literal())
             .then_ignore(rparen("Ident"))
-            .map(|((is_pointer, s), t)| match t {
-                TypeDef::Type(t) => match (is_pointer, s.as_str()) {
-                    (false, "_") => IdentifierType::Bucket,
-                    (true, _) => {
-                        IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, Some(t))))
-                    }
-                    _ => IdentifierType::Identifier(s, Some(t)),
-                },
-                _ => panic!("Expected type in typed identifier"),
+            .map(|((is_pointer, s), t)| match (is_pointer, s.as_str()) {
+                (false, "_") => IdentifierType::Bucket,
+                (true, _) => {
+                    IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, Some(t))))
+                }
+                _ => IdentifierType::Identifier(s, Some(t)),
             })
             .labelled("Typed_Ident"),
     ))
@@ -270,13 +288,13 @@ fn record_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
                         .ignore_then(
                             ident()
                                 .then_ignore(colon("Record Definition"))
-                                .then(type_literal().or(r.clone().boxed()))
+                                .then(type_literal().map(TypeDef::Type).or(r.clone().boxed()))
                                 .separated_by(newline.clone()),
                         )
                         .then_ignore(dedent("Record Definition").or_not()),
                     ident()
                         .then_ignore(colon("Record Definition"))
-                        .then(type_literal().or(r.clone().boxed()))
+                        .then(type_literal().map(TypeDef::Type).or(r.clone().boxed()))
                         .separated_by(semicolon("Record Definition")),
                 ))
                 .boxed(),
@@ -305,31 +323,39 @@ fn tuple_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
         choice((
             lparen("Tuple Definition")
                 .ignore_then(
-                    choice((type_literal(), record_definition(), t.clone()))
-                        .separated_by(comma("Tuple Definition").ignored())
-                        .map(|x| TypeDef::TupleDefinition {
-                            length: x.len(),
-                            types: x,
-                        }),
+                    choice((
+                        type_literal().map(TypeDef::Type),
+                        record_definition(),
+                        t.clone(),
+                    ))
+                    .separated_by(comma("Tuple Definition").ignored())
+                    .map(|x| TypeDef::TupleDefinition {
+                        length: x.len(),
+                        types: x,
+                    }),
                 )
                 .then_ignore(rparen("Tuple Definition"))
                 .then_ignore(newline("Tuple Definition").or_not()),
             indent("Tuple Definition").ignore_then(
                 lparen("Tuple Definition")
                     .ignore_then(
-                        choice((type_literal(), record_definition(), t.clone()))
-                            .separated_by(
-                                (comma("Tuple Definition")
-                                    .then(newline("Tuple Definition"))
-                                    .ignored())
-                                .or(newline("Tuple Definition")
-                                    .then(comma("Tuple Definition"))
-                                    .ignored()),
-                            )
-                            .map(|x| TypeDef::TupleDefinition {
-                                length: x.len(),
-                                types: x,
-                            }),
+                        choice((
+                            type_literal().map(TypeDef::Type),
+                            record_definition(),
+                            t.clone(),
+                        ))
+                        .separated_by(
+                            (comma("Tuple Definition")
+                                .then(newline("Tuple Definition"))
+                                .ignored())
+                            .or(newline("Tuple Definition")
+                                .then(comma("Tuple Definition"))
+                                .ignored()),
+                        )
+                        .map(|x| TypeDef::TupleDefinition {
+                            length: x.len(),
+                            types: x,
+                        }),
                     )
                     .then_ignore(rparen("Tuple Definition"))
                     .then_ignore(dedent("Tuple Definition")),
@@ -344,7 +370,7 @@ fn variant_definition() -> impl Parser<Token, TypeDef, Error = Simple<Token>> {
         .ignore_then(ident_token())
         .then(
             token(TokenKind::Of, "Variant Definition")
-                .ignore_then(type_literal())
+                .ignore_then(type_literal().map(TypeDef::Type))
                 .or_not(),
         )
         .boxed();
@@ -372,7 +398,7 @@ fn type_definition() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             record_definition(),
             tuple_definition(),
             variant_definition(),
-            type_literal(),
+            type_literal().map(TypeDef::Type),
         )))
         .map(|(value, t_)| Stmt::TypeDefinition(value, t_))
         .labelled("Type Definition")
@@ -397,6 +423,32 @@ fn match_expr<'a>(
     first_elem
         .then_ignore(indent("Match Expression").or_not())
         .map(|_| Expr::Identifier(IdentifierType::Bucket))
+        .boxed()
+}
+
+fn lambda_expression<'a>(
+    expr: Recursive<'a, (TokenKind, TokenState), Expr, Simple<(TokenKind, TokenState)>>,
+) -> BoxedParser<'a, Token, Expr, Simple<Token>> {
+    let idents = choice((
+        record_destructure(),
+        tuple_destructure(),
+        array_destructure(),
+        ident(),
+    ));
+    token(TokenKind::Lambda, "Lambda Expression")
+        .ignore_then(idents.repeated())
+        .then(
+            colon("Lambda Expression Return")
+                .ignore_then(type_literal())
+                .or_not(),
+        )
+        .then_ignore(token(TokenKind::op("->"), "Lambda Expression"))
+        .then(expr.clone())
+        .map(|((args, t), body)| Expr::Lambda {
+            args,
+            return_type: t,
+            body: Box::new(body),
+        })
         .boxed()
 }
 
@@ -574,6 +626,7 @@ fn expr<'a>(
             match_expr.boxed(),
             block_expr.boxed(),
             func_call.boxed(),
+            lambda_expression(expr.clone()),
             chain_expr,
             atom,
         ))
@@ -597,27 +650,24 @@ fn expr<'a>(
 // Recursively reverse the order of function calls to make it easier to evaluate later
 fn map_binary_expr((left, right): (Expr, Option<(String, Expr)>)) -> Expr {
     if let Some((name, expression)) = right {
-        match name.as_str() {
-            "->" => map_lambda(left, expression),
-            _ => match expression {
+        match expression {
+            Expr::FunctionCall {
+                name: inner_name,
+                mut args,
+            } => {
+                let second_func_right_arg = args.pop().unwrap();
+                let second_func_left_arg = args.pop().unwrap();
                 Expr::FunctionCall {
                     name: inner_name,
-                    mut args,
-                } => {
-                    let second_func_right_arg = args.pop().unwrap();
-                    let second_func_left_arg = args.pop().unwrap();
-                    Expr::FunctionCall {
-                        name: inner_name,
-                        args: vec![
-                            map_binary_expr((left, Some((name, second_func_left_arg)))),
-                            second_func_right_arg,
-                        ],
-                    }
+                    args: vec![
+                        map_binary_expr((left, Some((name, second_func_left_arg)))),
+                        second_func_right_arg,
+                    ],
                 }
-                _ => Expr::FunctionCall {
-                    name,
-                    args: vec![left, expression],
-                },
+            }
+            _ => Expr::FunctionCall {
+                name,
+                args: vec![left, expression],
             },
         }
     } else {
@@ -625,83 +675,25 @@ fn map_binary_expr((left, right): (Expr, Option<(String, Expr)>)) -> Expr {
     }
 }
 
-// Handle lambda syntax
-fn map_lambda(left: Expr, right: Expr) -> Expr {
-    let args = match left {
-        Expr::TupleLiteral(args) => args
-            .into_iter()
-            .map(|arg| {
-                match arg {
-                    Expr::Identifier(x @ IdentifierType::Identifier(_, _))
-                    | Expr::Identifier(x @ IdentifierType::Bucket) => x,
-                    // TODO: Make something nice here
-                    _ => panic!(),
-                }
-            })
-            .collect(),
-        Expr::Identifier(ident) => match ident {
-            x @ IdentifierType::Identifier(_, _)
-            | x @ IdentifierType::Unit
-            | x @ IdentifierType::Pointer(_)
-            | x @ IdentifierType::Bucket => vec![x],
-            // TODO: Handle errors when incorrect identifier used
-            _ => panic!(),
-        },
-        // TODO: Handle errors when tuples or identifiers aren't used as lambda args
-        _ => panic!(),
-    };
-    Expr::Lambda {
-        args,
-        body: Box::new(right),
-    }
-}
-
 fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
     // Prepare all the parsers inside the statement function
     let ident = ident().boxed();
-    let ident_node = ident_node().map(Stmt::Expr).boxed();
     let ident_token = ident_token().boxed();
-    let comma = comma("Stmt").boxed();
-    let lbrace = lbrace("Stmt").boxed();
-    let rbrace = rbrace("Stmt").boxed();
     let lparen = lparen("Stmt").boxed();
     let rparen = rparen("Stmt").boxed();
-    let lbracket = lbracket("Stmt").boxed();
-    let rbracket = rbracket("Stmt").boxed();
     let type_literal = type_literal().boxed();
     let assign = assign("Stmt").boxed();
     let type_ = type_definition().boxed();
+    let record_destructure = record_destructure().boxed();
+    let array_destructure = array_destructure().boxed();
+    let tuple_destructure = tuple_destructure().boxed();
 
     recursive(move |rstmt| {
-        log::debug!("Processing next token in stmt parser");
-
         // Because the stmt and expr parsers are mutually recursive the expr parser needs to be
         // instantiated here with the recurst stmt parser
         let expr = expr(rstmt.clone().boxed()).boxed();
-
-        let record_destructure = (ident
-            .clone()
-            .separated_by(comma.clone())
-            .delimited_by(lbrace.clone(), rbrace.clone()))
-        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::RecordDestructure(s, None))))
-        .labelled("Record Destructure");
-
-        let array_destructure = (ident
-            .clone()
-            .separated_by(comma.clone())
-            .delimited_by(lbracket.clone(), rbracket.clone()))
-        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::ArrayDestructure(s, None))))
-        .labelled("Array Destructure");
-
-        let tuple_destructure = (ident
-            .clone()
-            .separated_by(comma.clone())
-            .delimited_by(lparen.clone(), rparen.clone()))
-        .map(|s| Stmt::Expr(Expr::Identifier(IdentifierType::TupleDestructure(s, None))))
-        .labelled("Tuple Destructure");
-
         let ident_types = choice((
-            ident_node.clone(),
+            ident.clone(),
             record_destructure,
             array_destructure,
             tuple_destructure,
@@ -714,23 +706,19 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             .then_ignore(token(TokenKind::Colon, "Typed Ident").boxed())
             .then(type_literal.clone())
             .then_ignore(rparen.clone())
-            .map(|(node, def)| match node {
-                Stmt::Expr(Expr::Identifier(ident)) => match (ident, def) {
-                    (IdentifierType::Identifier(n, _), TypeDef::Type(t)) => {
-                        Stmt::Expr(Expr::Identifier(IdentifierType::Identifier(n, Some(t))))
-                    }
-                    (IdentifierType::RecordDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
-                        Expr::Identifier(IdentifierType::RecordDestructure(n, Some(t))),
-                    ),
-                    (IdentifierType::ArrayDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
-                        Expr::Identifier(IdentifierType::ArrayDestructure(n, Some(t))),
-                    ),
-                    (IdentifierType::TupleDestructure(n, _), TypeDef::Type(t)) => Stmt::Expr(
-                        Expr::Identifier(IdentifierType::TupleDestructure(n, Some(t))),
-                    ),
-                    (x @ IdentifierType::Bucket, _) => Stmt::Expr(Expr::Identifier(x)),
-                    _ => panic!(),
-                },
+            .map(|(ident, t)| match ident {
+                IdentifierType::Identifier(n, _) => IdentifierType::Identifier(n, Some(t)),
+                IdentifierType::RecordDestructure(n, _) => {
+                    IdentifierType::RecordDestructure(n, Some(t))
+                }
+                IdentifierType::ArrayDestructure(n, _) => {
+                    IdentifierType::ArrayDestructure(n, Some(t))
+                }
+                IdentifierType::TupleDestructure(n, _) => {
+                    IdentifierType::TupleDestructure(n, Some(t))
+                }
+
+                x @ IdentifierType::Bucket => x,
                 _ => panic!(),
             })
             .labelled("Typed Ident")
@@ -745,16 +733,10 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
                 .then(let_identifier)
                 .then_ignore(assign.clone())
                 .then(expr.clone())
-                .map(|((mutable, name), value)| {
-                    let identifier = match name {
-                        Stmt::Expr(Expr::Identifier(n)) => n,
-                        _ => panic!(),
-                    };
-                    Stmt::LetStatement {
-                        identifier,
-                        value,
-                        mutable,
-                    }
+                .map(|((mutable, identifier), value)| Stmt::LetStatement {
+                    identifier,
+                    value,
+                    mutable,
                 })
                 .labelled("Let value")
                 .boxed();
@@ -784,20 +766,11 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
                     .then(return_type)
                     .then_ignore(assign.clone())
                     .then(exprs)
-                    .map(|(((name, args), return_), body)| {
-                        log::debug!("Parsing function {}\n{:?}\n{:?}", name, args, body);
-                        Stmt::FunctionDefinition {
-                            name: Some(name),
-                            return_type: match return_ {
-                                Some(t) => match t {
-                                    TypeDef::Type(t) => Some(t),
-                                    _ => panic!(),
-                                },
-                                _ => None,
-                            },
-                            arguments: args,
-                            body,
-                        }
+                    .map(|(((name, args), return_), body)| Stmt::FunctionDefinition {
+                        name: Some(name),
+                        return_type: return_,
+                        arguments: args,
+                        body,
                     })
                     .boxed()
             };
@@ -813,10 +786,6 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
             type_.clone(),
             expr.clone().map(Stmt::Expr),
         ))
-        .map(|x| {
-            log::debug!("Parsed Statement {:?}", x);
-            x
-        })
         .padded_by(token(TokenKind::Comment, "Stmt").or_not().ignored())
         .padded_by(newline("Stmt").or_not().ignored())
         .labelled("Statement")
@@ -887,6 +856,3 @@ pub fn error_report(err: &Simple<Token>) {
         log::error!("Error: {:?}", err);
     }
 }
-
-#[cfg(test)]
-mod test {}
