@@ -56,7 +56,7 @@ fn match_output(tokens: Vec<Token>, expected: Vec<TopLevel>) {
 fn test_func_calls() {
     setup();
     let input = "
-x 1 2
+x y 2
 y
 	(5 +
 	4)
@@ -67,7 +67,7 @@ y
         input,
         vec![
             TokenKind::ident("x"),
-            TokenKind::num("1"),
+            TokenKind::ident("y"),
             TokenKind::num("2"),
             TokenKind::NewLine,
             TokenKind::ident("y"),
@@ -92,7 +92,7 @@ y
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
                 name: "x".to_owned(),
                 args: vec![
-                    Expr::IntLiteral("1".to_owned()),
+                    Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
                     Expr::IntLiteral("2".to_owned()),
                 ],
             })),
@@ -713,7 +713,7 @@ fn test_func_definition() {
     setup();
     let input = "
 let firstTest x y = x + y
-let testFunc x (y: int) z =
+let testFunc x (y: int) z: int =
 	let result = x + 1
 	result * z
 ";
@@ -738,6 +738,8 @@ let testFunc x (y: int) z =
             TokenKind::ident("int"),
             TokenKind::RParen,
             TokenKind::ident("z"),
+            TokenKind::Colon,
+            TokenKind::ident("int"),
             TokenKind::Assign,
             TokenKind::NewLine,
             TokenKind::Indent,
@@ -787,7 +789,10 @@ let testFunc x (y: int) z =
                     ),
                     IdentifierType::Identifier("z".to_string(), None),
                 ],
-                return_type: None,
+                return_type: Some(Type::Type {
+                    name: "int".to_string(),
+                    module: None,
+                }),
                 body: (Expr::Block(vec![
                     Stmt::LetStatement {
                         identifier: IdentifierType::Identifier("result".to_string(), None),
@@ -1319,10 +1324,10 @@ fn test_lambda() {
     setup();
     let input = "
 fun (x, y) -> x + y
-fun x ->
-	square x
+(fun x ->
+	square x)
 fun _ -> 5
-fun _ (x: int) -> x + 5
+fun _ (x: int): int -> x + 5
 ";
     let tokens = lex_input(
         input,
@@ -1338,6 +1343,7 @@ fun _ (x: int) -> x + 5
             TokenKind::op("+"),
             TokenKind::ident("y"),
             TokenKind::NewLine,
+            TokenKind::LParen,
             TokenKind::Lambda,
             TokenKind::ident("x"),
             TokenKind::op("->"),
@@ -1345,6 +1351,7 @@ fun _ (x: int) -> x + 5
             TokenKind::Indent,
             TokenKind::ident("square"),
             TokenKind::ident("x"),
+            TokenKind::RParen,
             TokenKind::NewLine,
             TokenKind::Dedent,
             TokenKind::Lambda,
@@ -1359,6 +1366,8 @@ fun _ (x: int) -> x + 5
             TokenKind::Colon,
             TokenKind::ident("int"),
             TokenKind::RParen,
+            TokenKind::Colon,
+            TokenKind::ident("int"),
             TokenKind::op("->"),
             TokenKind::ident("x"),
             TokenKind::op("+"),
@@ -1414,7 +1423,10 @@ fun _ (x: int) -> x + 5
                         }),
                     ),
                 ],
-                return_type: None,
+                return_type: Some(Type::Type {
+                    name: "int".to_string(),
+                    module: None,
+                }),
                 body: Box::new(Expr::FunctionCall {
                     name: "+".to_string(),
                     args: vec![

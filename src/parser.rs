@@ -611,12 +611,16 @@ fn expr<'a>(
         let func_call = ident_token()
             .then(choice((
                 indent("Func Call")
-                    .ignore_then(expr.clone().separated_by(newline("Func Call")))
+                    .ignore_then(atom.clone().separated_by(newline("Func Call")))
                     .then_ignore(dedent("Func Call")),
-                expr.clone()
+                atom.clone()
                     .repeated()
                     .at_least(1)
-                    .then_ignore(newline("Func Call"))
+                    .then_ignore(choice((
+                        newline("Func Call"),
+                        token(TokenKind::Do, "Func Call").rewind().ignored(),
+                        rparen("Func Call").rewind().ignored(),
+                    )))
                     .boxed(),
             )))
             .map(|(name, args)| Expr::FunctionCall { name, args })
