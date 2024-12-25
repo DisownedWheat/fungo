@@ -534,13 +534,20 @@ fn expr<'a>(
 
         let block_expr = indent("Block Expr")
             .ignore_then(stmt.repeated().at_least(1))
-            .then_ignore(dedent("Block Expr"))
+            .then_ignore(
+                (rparen("Block Expr")
+                    .ignored()
+                    .then_ignore(dedent("Block Expr")))
+                .rewind()
+                .or(dedent("Block Expr")),
+            )
             .map(|x| Expr::Block(x))
             .labelled("Block Expression");
 
         let paren_expression = lparen("Paren Expression")
             .ignore_then(expr.clone())
             .then_ignore(rparen("Paren Expression"))
+            .then_ignore(dedent("Paren Expression").or_not())
             .boxed()
             .labelled("Paren Expression");
 
