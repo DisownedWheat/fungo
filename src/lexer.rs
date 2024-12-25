@@ -13,7 +13,7 @@ fn clean_string<'s>(lexer: &mut logos::Lexer<'s, TokenKind>) -> String {
 #[derive(Debug, Logos, PartialEq, Eq, Clone, Hash, Serialize)]
 // #[logos(skip r"[ \t\n\f]+")]
 pub enum TokenKind {
-    #[regex(r"[-]?[0-9]+[.]?[0-9]*", |lex| (lex.slice().to_string()))]
+    #[regex(r"[-]?[0-9]+[.0-9]*", |lex| (lex.slice().to_string()))]
     NumberLiteral(String),
     #[token("let")]
     Let,
