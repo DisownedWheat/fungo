@@ -694,9 +694,9 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         let expr = expr(rstmt.clone().boxed()).boxed();
         let ident_types = choice((
             ident.clone(),
-            record_destructure,
-            array_destructure,
-            tuple_destructure,
+            record_destructure.clone(),
+            array_destructure.clone(),
+            tuple_destructure.clone(),
         ))
         .boxed();
 
@@ -781,8 +781,36 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         .labelled("Let Stmt")
         .boxed();
 
+        let for_in_loop = token(TokenKind::For, "For In Loop")
+            .ignore_then(choice([
+                ident.clone(),
+                record_destructure,
+                array_destructure,
+                tuple_destructure,
+            ]))
+            .then_ignore(token(TokenKind::In, "For In Loop").ignored())
+            .then(expr.clone())
+            .then_ignore(token(TokenKind::Do, "For In Loop"))
+            .then(expr.clone())
+            .map(|((i, cond), ex)| Stmt::ForInLoop {
+                condition_arg: i,
+                condition_expr: cond,
+                consequent: ex,
+            });
+
+        let while_loop = token(TokenKind::While, "While Loop")
+            .ignore_then(expr.clone())
+            .then_ignore(token(TokenKind::Do, "While Loop"))
+            .then(expr.clone())
+            .map(|(cond, body)| Stmt::WhileLoop {
+                condition: cond,
+                consequent: body,
+            });
+
         choice((
             let_stmt.clone(),
+            for_in_loop,
+            while_loop,
             type_.clone(),
             expr.clone().map(Stmt::Expr),
         ))

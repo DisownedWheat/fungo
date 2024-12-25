@@ -59,6 +59,14 @@ pub enum TokenKind {
     #[token("fun")]
     Lambda,
 
+    #[token("for")]
+    For,
+    #[token("in")]
+    In,
+    #[token("while")]
+    While,
+    #[token("do")]
+    Do,
 
     #[regex(r"[\+\-\|\/\%\^<>=.&\*:]+", |lex| lex.slice().to_string())]
     Operator(String),

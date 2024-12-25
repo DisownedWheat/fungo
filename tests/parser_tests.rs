@@ -1426,3 +1426,87 @@ fun _ (x: int) -> x + 5
         ],
     );
 }
+
+#[test]
+fn test_for_in_loop() {
+    setup();
+    let input = "
+for x in 1 .. 10 do x
+for (a, b) in (func x y) do
+	a + b
+";
+    let tokens = lex_input(
+        input,
+        vec![
+            TokenKind::For,
+            TokenKind::ident("x"),
+            TokenKind::In,
+            TokenKind::num("1"),
+            TokenKind::op(".."),
+            TokenKind::num("10"),
+            TokenKind::Do,
+            TokenKind::ident("x"),
+            TokenKind::NewLine,
+            TokenKind::For,
+            TokenKind::LParen,
+            TokenKind::ident("a"),
+            TokenKind::Comma,
+            TokenKind::ident("b"),
+            TokenKind::RParen,
+            TokenKind::In,
+            TokenKind::LParen,
+            TokenKind::ident("func"),
+            TokenKind::ident("x"),
+            TokenKind::ident("y"),
+            TokenKind::RParen,
+            TokenKind::Do,
+            TokenKind::NewLine,
+            TokenKind::Indent,
+            TokenKind::ident("a"),
+            TokenKind::op("+"),
+            TokenKind::ident("b"),
+            TokenKind::NewLine,
+            TokenKind::Dedent,
+        ],
+    );
+
+    let _ = match_output(
+        tokens,
+        vec![
+            TopLevel::Stmt(Stmt::ForInLoop {
+                condition_arg: IdentifierType::Identifier("x".to_string(), None),
+                condition_expr: Expr::FunctionCall {
+                    name: "..".to_string(),
+                    args: vec![
+                        Expr::IntLiteral("1".to_string()),
+                        Expr::IntLiteral("10".to_string()),
+                    ],
+                },
+                consequent: Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+            }),
+            TopLevel::Stmt(Stmt::ForInLoop {
+                condition_arg: IdentifierType::TupleDestructure(
+                    vec![
+                        IdentifierType::Identifier("a".to_string(), None),
+                        IdentifierType::Identifier("b".to_string(), None),
+                    ],
+                    None,
+                ),
+                condition_expr: Expr::FunctionCall {
+                    name: "func".to_string(),
+                    args: vec![
+                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
+                    ],
+                },
+                consequent: Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
+                    name: "+".to_string(),
+                    args: vec![
+                        Expr::Identifier(IdentifierType::Identifier("a".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier("b".to_string(), None)),
+                    ],
+                })]),
+            }),
+        ],
+    );
+}

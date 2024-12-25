@@ -164,6 +164,15 @@ pub enum Stmt {
         return_type: Option<Type>,
         body: Expr,
     },
+    ForInLoop {
+        condition_arg: IdentifierType,
+        condition_expr: Expr,
+        consequent: Expr,
+    },
+    WhileLoop {
+        condition: Expr,
+        consequent: Expr,
+    },
     TypeDefinition(ASTString, TypeDef),
 }
 
