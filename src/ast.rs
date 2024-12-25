@@ -95,29 +95,6 @@ pub struct RecordField {
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct Tuple {
-    length: usize,
-    values: Vec<Type>,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct EnumDefiniton {
-    pub fields: Vec<(ASTString, Option<Type>)>,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct PipeRight {
-    pub left: Box<Expr>,
-    pub right: Box<Expr>,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct Assign {
-    pub left: Box<Expr>,
-    pub right: Box<Expr>,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum Expr {
     Identifier(IdentifierType),
     Block(Vec<Stmt>),
