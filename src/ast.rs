@@ -1,8 +1,43 @@
 // AST NODES
 
+use crate::lexer::{Span, Token, TokenKind};
 use serde::Serialize;
 
-pub type ASTString = String;
+#[derive(Debug, Serialize)]
+pub struct ASTString {
+    pub value: String,
+    pub span: Span,
+}
+
+impl ASTString {
+    pub fn from_str(value: &str) -> Self {
+        ASTString {
+            value: value.to_string(),
+            span: 0..0,
+        }
+    }
+
+    pub fn from_token((kind, state): Token) -> Self {
+        match kind {
+            TokenKind::StringLiteral(value)
+            | TokenKind::NumberLiteral(value)
+            | TokenKind::Identifier(value)
+            | TokenKind::Operator(value) => ASTString {
+                value,
+                span: state.span,
+            },
+            _ => panic!(),
+        }
+    }
+}
+
+impl PartialEq for ASTString {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl Eq for ASTString {}
 
 // Imports
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -42,9 +77,9 @@ pub enum IdentifierType {
 }
 
 impl IdentifierType {
-    pub fn get_name(&self) -> Option<ASTString> {
+    pub fn get_name(&self) -> Option<&str> {
         match self {
-            IdentifierType::Identifier(identifier, _) => Some(identifier.clone()),
+            IdentifierType::Identifier(ref identifier, _) => Some(identifier.value.as_str()),
             _ => None,
         }
     }

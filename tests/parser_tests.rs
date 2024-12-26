@@ -21,7 +21,7 @@ fn map_kinds(tokens: &Vec<Token>) -> Vec<TokenKind> {
 fn lex_input(input: &str, expected: Vec<TokenKind>) -> Vec<Token> {
     let token_result = lex_raw(input);
     assert!(token_result.is_ok());
-    let tokens = token_result.unwrap();
+    let tokens = token_result.unwrap().0;
     let kinds = map_kinds(&tokens);
     assert_eq!(
         kinds,
@@ -90,23 +90,23 @@ y
         tokens,
         vec![
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "x".to_owned(),
+                name: ASTString::from_str("x"),
                 args: vec![
-                    Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
-                    Expr::IntLiteral("2".to_owned()),
+                    Expr::Identifier(IdentifierType::Identifier(ASTString::from_str("y"), None)),
+                    Expr::IntLiteral(ASTString::from_str("2")),
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "y".to_owned(),
+                name: ASTString::from_str("y"),
                 args: vec![
                     Expr::FunctionCall {
-                        name: "+".to_string(),
+                        name: ASTString::from_str("+"),
                         args: vec![
-                            Expr::IntLiteral("5".to_owned()),
-                            Expr::IntLiteral("4".to_owned()),
+                            Expr::IntLiteral(ASTString::from_str("5")),
+                            Expr::IntLiteral(ASTString::from_str("4")),
                         ],
                     },
-                    Expr::StringLiteral("Hello World".to_owned()),
+                    Expr::StringLiteral(ASTString::from_str("Hello World")),
                 ],
             })),
         ],
@@ -154,21 +154,21 @@ testCall
         tokens,
         vec![
             TopLevel::GoImport(GoImport {
-                module: "fmt".to_string(),
+                module: ASTString::from_str("fmt"),
                 alias: None,
             }),
             TopLevel::FungoImport(FungoImport {
-                module: "Test".to_string(),
+                module: ASTString::from_str("Test"),
             }),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "testCall".to_string(),
+                name: ASTString::from_str("testCall"),
                 args: vec![
                     Expr::TupleLiteral(vec![
-                        Expr::IntLiteral("1".to_string()),
-                        Expr::IntLiteral("2".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("1")),
+                        Expr::IntLiteral(ASTString::from_str("2")),
                     ]),
-                    Expr::IntLiteral("3".to_string()),
-                    Expr::IntLiteral("4".to_string()),
+                    Expr::IntLiteral(ASTString::from_str("3")),
+                    Expr::IntLiteral(ASTString::from_str("4")),
                 ],
             })),
         ],
@@ -202,14 +202,14 @@ let x =
     let _ = match_output(
         tokens,
         vec![TopLevel::Stmt(Stmt::LetStatement {
-            identifier: IdentifierType::Identifier("x".to_string(), None),
+            identifier: IdentifierType::Identifier(ASTString::from_str("x"), None),
             mutable: false,
             value: Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                name: "testFunc".to_string(),
+                name: ASTString::from_str("testFunc"),
                 args: vec![
-                    Expr::IntLiteral("0".to_string()),
-                    Expr::IntLiteral("1".to_string()),
-                    Expr::StringLiteral("a".to_string()),
+                    Expr::IntLiteral(ASTString::from_str("0")),
+                    Expr::IntLiteral(ASTString::from_str("1")),
+                    Expr::StringLiteral(ASTString::from_str("a")),
                 ],
             })]),
         })],
@@ -280,20 +280,20 @@ type TestRecord = {
             tokens,
             vec![
                 TopLevel::Stmt(Stmt::TypeDefinition(
-                    "Testing".to_string(),
+                    ASTString::from_str("Testing"),
                     TypeDef::RecordDefinition(RecordDefinition {
                         fields: vec![
                             RecordDefinitionField {
-                                name: "x".to_string(),
+                                name: ASTString::from_str("x"),
                                 type_: TypeDef::Type(Type::Type {
-                                    name: "int".to_string(),
+                                    name: ASTString::from_str("int"),
                                     module: None,
                                 }),
                             },
                             RecordDefinitionField {
-                                name: "y".to_string(),
+                                name: ASTString::from_str("y"),
                                 type_: TypeDef::Type(Type::Type {
-                                    name: "int".to_string(),
+                                    name: ASTString::from_str("int"),
                                     module: None,
                                 }),
                             },
@@ -301,25 +301,25 @@ type TestRecord = {
                     }),
                 )),
                 TopLevel::Stmt(Stmt::TypeDefinition(
-                    "TestRecord".to_string(),
+                    ASTString::from_str("TestRecord"),
                     TypeDef::RecordDefinition(RecordDefinition {
                         fields: vec![
                             RecordDefinitionField {
-                                name: "TestVal".to_string(),
+                                name: ASTString::from_str("TestVal"),
                                 type_: TypeDef::Type(Type::Slice(Box::new(Type::Pointer(
                                     Box::new(Type::Type {
-                                        name: "int".to_string(),
+                                        name: ASTString::from_str("int"),
                                         module: None,
                                     }),
                                 )))),
                             },
                             RecordDefinitionField {
-                                name: "AnotherTest".to_string(),
+                                name: ASTString::from_str("AnotherTest"),
                                 type_: TypeDef::RecordDefinition(RecordDefinition {
                                     fields: vec![RecordDefinitionField {
-                                        name: "InteriorTest".to_string(),
+                                        name: ASTString::from_str("InteriorTest"),
                                         type_: TypeDef::Type(Type::Type {
-                                            name: "string".to_string(),
+                                            name: ASTString::from_str("string"),
                                             module: None,
                                         }),
                                     }],
@@ -354,20 +354,20 @@ type TestTuple = (int, string, TestRecord)
         let _ = match_output(
             tokens,
             vec![TopLevel::Stmt(Stmt::TypeDefinition(
-                "TestTuple".to_string(),
+                ASTString::from_str("TestTuple"),
                 TypeDef::TupleDefinition {
                     length: 3,
                     types: vec![
                         TypeDef::Type(Type::Type {
-                            name: "int".to_string(),
+                            name: ASTString::from_str("int"),
                             module: None,
                         }),
                         TypeDef::Type(Type::Type {
-                            name: "string".to_string(),
+                            name: ASTString::from_str("string"),
                             module: None,
                         }),
                         TypeDef::Type(Type::Type {
-                            name: "TestRecord".to_string(),
+                            name: ASTString::from_str("TestRecord"),
                             module: None,
                         }),
                     ],
@@ -493,56 +493,59 @@ x *y
         tokens,
         vec![
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "*".to_string(),
+                name: ASTString::from_str("*"),
                 args: vec![
-                    Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                    Expr::IntLiteral("5".to_string()),
+                    Expr::Identifier(IdentifierType::Identifier(ASTString::from_str("x"), None)),
+                    Expr::IntLiteral(ASTString::from_str("5")),
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "+".to_string(),
+                name: ASTString::from_str("+"),
                 args: vec![
-                    Expr::StringLiteral("test".to_string()),
-                    Expr::StringLiteral("Hello".to_string()),
+                    Expr::StringLiteral(ASTString::from_str("test")),
+                    Expr::StringLiteral(ASTString::from_str("Hello")),
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "-".to_string(),
+                name: ASTString::from_str("-"),
                 args: vec![
                     Expr::Accessor {
                         left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                            "x".to_string(),
+                            ASTString::from_str("x"),
                             None,
                         ))),
                         right: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                            "InsideValue".to_string(),
+                            ASTString::from_str("InsideValue"),
                             None,
                         ))),
                     },
                     Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                        name: "%".to_string(),
+                        name: ASTString::from_str("%"),
                         args: vec![
                             Expr::FunctionCall {
-                                name: "+".to_string(),
+                                name: ASTString::from_str("+"),
                                 args: vec![
-                                    Expr::IntLiteral("5".to_string()),
-                                    Expr::IntLiteral("2".to_string()),
+                                    Expr::IntLiteral(ASTString::from_str("5")),
+                                    Expr::IntLiteral(ASTString::from_str("2")),
                                 ],
                             },
-                            Expr::IntLiteral("3".to_string()),
+                            Expr::IntLiteral(ASTString::from_str("3")),
                         ],
                     })]),
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "|>".to_string(),
+                name: ASTString::from_str("|>"),
                 args: vec![
                     Expr::FunctionCall {
-                        name: "|>".to_string(),
+                        name: ASTString::from_str("|>"),
                         args: vec![
-                            Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
                             Expr::Identifier(IdentifierType::Identifier(
-                                "testFunc".to_string(),
+                                ASTString::from_str("x"),
+                                None,
+                            )),
+                            Expr::Identifier(IdentifierType::Identifier(
+                                ASTString::from_str("testFunc"),
                                 None,
                             )),
                         ],
@@ -550,40 +553,46 @@ x *y
                     Expr::Accessor {
                         left: Box::new(Expr::Identifier(IdentifierType::Bucket)),
                         right: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                            "Value".to_string(),
+                            ASTString::from_str("Value"),
                             None,
                         ))),
                     },
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "||".to_string(),
+                name: ASTString::from_str("||"),
                 args: vec![
                     Expr::FunctionCall {
-                        name: "|>".to_string(),
+                        name: ASTString::from_str("|>"),
                         args: vec![
                             Expr::FunctionCall {
-                                name: "+".to_string(),
+                                name: ASTString::from_str("+"),
                                 args: vec![
-                                    Expr::IntLiteral("5".to_string()),
+                                    Expr::IntLiteral(ASTString::from_str("5")),
                                     Expr::Identifier(IdentifierType::Deref(Box::new(
-                                        IdentifierType::Identifier("test".to_string(), None),
+                                        IdentifierType::Identifier(
+                                            ASTString::from_str("test"),
+                                            None,
+                                        ),
                                     ))),
                                 ],
                             },
                             Expr::Identifier(IdentifierType::Identifier(
-                                "square".to_string(),
+                                ASTString::from_str("square"),
                                 None,
                             )),
                         ],
                     },
-                    Expr::Identifier(IdentifierType::Identifier("sqrt".to_string(), None)),
+                    Expr::Identifier(IdentifierType::Identifier(
+                        ASTString::from_str("sqrt"),
+                        None,
+                    )),
                 ],
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
-                name: "x".to_string(),
+                name: ASTString::from_str("x"),
                 args: vec![Expr::Identifier(IdentifierType::Deref(Box::new(
-                    IdentifierType::Identifier("y".to_string(), None),
+                    IdentifierType::Identifier(ASTString::from_str("y"), None),
                 )))],
             })),
         ],
@@ -656,49 +665,49 @@ let b =
         tokens,
         vec![
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("x".to_string(), None),
-                value: Expr::IntLiteral("1".to_string()),
+                identifier: IdentifierType::Identifier(ASTString::from_str("x"), None),
+                value: Expr::IntLiteral(ASTString::from_str("1")),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("y".to_string(), None),
-                value: Expr::IntLiteral("2".to_string()),
+                identifier: IdentifierType::Identifier(ASTString::from_str("y"), None),
+                value: Expr::IntLiteral(ASTString::from_str("2")),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("z".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("z"), None),
                 value: Expr::RecordLiteral {
                     fields: vec![RecordField {
-                        name: "TestValue".to_string(),
+                        name: ASTString::from_str("TestValue"),
                         value: Expr::BoolLiteral(true),
                     }],
                 },
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("a".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("a"), None),
                 value: Expr::TupleLiteral(vec![
-                    Expr::StringLiteral("Hello".to_string()),
-                    Expr::StringLiteral("World".to_string()),
+                    Expr::StringLiteral(ASTString::from_str("Hello")),
+                    Expr::StringLiteral(ASTString::from_str("World")),
                 ]),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("b".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("b"), None),
                 value: Expr::Block(vec![
                     Stmt::LetStatement {
-                        identifier: IdentifierType::Identifier("inner".to_string(), None),
+                        identifier: IdentifierType::Identifier(ASTString::from_str("inner"), None),
                         value: Expr::FunctionCall {
-                            name: "+".to_string(),
+                            name: ASTString::from_str("+"),
                             args: vec![
-                                Expr::IntLiteral("5".to_string()),
-                                Expr::IntLiteral("5".to_string()),
+                                Expr::IntLiteral(ASTString::from_str("5")),
+                                Expr::IntLiteral(ASTString::from_str("5")),
                             ],
                         },
                         mutable: false,
                     },
                     Stmt::Expr(Expr::Identifier(IdentifierType::Identifier(
-                        "inner".to_string(),
+                        ASTString::from_str("inner"),
                         None,
                     ))),
                 ]),
@@ -762,57 +771,69 @@ let testFunc x (y: int) z: int =
         tokens,
         vec![
             TopLevel::Stmt(Stmt::FunctionDefinition {
-                name: Some("firstTest".to_string()),
+                name: Some(ASTString::from_str("firstTest")),
                 arguments: vec![
-                    IdentifierType::Identifier("x".to_string(), None),
-                    IdentifierType::Identifier("y".to_string(), None),
+                    IdentifierType::Identifier(ASTString::from_str("x"), None),
+                    IdentifierType::Identifier(ASTString::from_str("y"), None),
                 ],
                 return_type: None,
                 body: (Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("y"),
+                            None,
+                        )),
                     ],
                 }),
             }),
             TopLevel::Stmt(Stmt::FunctionDefinition {
-                name: Some("testFunc".to_string()),
+                name: Some(ASTString::from_str("testFunc")),
                 arguments: vec![
-                    IdentifierType::Identifier("x".to_string(), None),
+                    IdentifierType::Identifier(ASTString::from_str("x"), None),
                     IdentifierType::Identifier(
-                        "y".to_string(),
+                        ASTString::from_str("y"),
                         Some(Type::Type {
-                            name: "int".to_string(),
+                            name: ASTString::from_str("int"),
                             module: None,
                         }),
                     ),
-                    IdentifierType::Identifier("z".to_string(), None),
+                    IdentifierType::Identifier(ASTString::from_str("z"), None),
                 ],
                 return_type: Some(Type::Type {
-                    name: "int".to_string(),
+                    name: ASTString::from_str("int"),
                     module: None,
                 }),
                 body: (Expr::Block(vec![
                     Stmt::LetStatement {
-                        identifier: IdentifierType::Identifier("result".to_string(), None),
+                        identifier: IdentifierType::Identifier(ASTString::from_str("result"), None),
                         mutable: false,
                         value: Expr::FunctionCall {
-                            name: "+".to_string(),
+                            name: ASTString::from_str("+"),
                             args: vec![
-                                Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                                Expr::IntLiteral("1".to_string()),
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    ASTString::from_str("x"),
+                                    None,
+                                )),
+                                Expr::IntLiteral(ASTString::from_str("1")),
                             ],
                         },
                     },
                     Stmt::Expr(Expr::FunctionCall {
-                        name: "*".to_string(),
+                        name: ASTString::from_str("*"),
                         args: vec![
                             Expr::Identifier(IdentifierType::Identifier(
-                                "result".to_string(),
+                                ASTString::from_str("result"),
                                 None,
                             )),
-                            Expr::Identifier(IdentifierType::Identifier("z".to_string(), None)),
+                            Expr::Identifier(IdentifierType::Identifier(
+                                ASTString::from_str("z"),
+                                None,
+                            )),
                         ],
                     }),
                 ])),
@@ -945,15 +966,15 @@ let multiList =
         tokens,
         vec![
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("singleLine".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("singleLine"), None),
                 value: Expr::RecordLiteral {
                     fields: vec![
                         RecordField {
-                            name: "TestValue".to_string(),
-                            value: Expr::StringLiteral("Test".to_string()),
+                            name: ASTString::from_str("TestValue"),
+                            value: Expr::StringLiteral(ASTString::from_str("Test")),
                         },
                         RecordField {
-                            name: "Val".to_string(),
+                            name: ASTString::from_str("Val"),
                             value: Expr::BoolLiteral(true),
                         },
                     ],
@@ -961,57 +982,57 @@ let multiList =
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("multiLine".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("multiLine"), None),
                 mutable: false,
                 value: Expr::Block(vec![Stmt::Expr(Expr::RecordLiteral {
                     fields: vec![
                         RecordField {
-                            name: "TestValue".to_string(),
-                            value: Expr::StringLiteral("Hello World".to_string()),
+                            name: ASTString::from_str("TestValue"),
+                            value: Expr::StringLiteral(ASTString::from_str("Hello World")),
                         },
                         RecordField {
-                            name: "Val".to_string(),
+                            name: ASTString::from_str("Val"),
                             value: Expr::BoolLiteral(false),
                         },
                     ],
                 })]),
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("singleTuple".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("singleTuple"), None),
                 value: Expr::TupleLiteral(vec![
-                    Expr::StringLiteral("Hello World".to_string()),
-                    Expr::IntLiteral("15".to_string()),
+                    Expr::StringLiteral(ASTString::from_str("Hello World")),
+                    Expr::IntLiteral(ASTString::from_str("15")),
                 ]),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("multiTuple".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("multiTuple"), None),
                 value: Expr::Block(vec![Stmt::Expr(Expr::TupleLiteral(vec![
-                    Expr::IntLiteral("15".to_string()),
+                    Expr::IntLiteral(ASTString::from_str("15")),
                     Expr::TupleLiteral(vec![
-                        Expr::StringLiteral("Hello".to_string()),
-                        Expr::IntLiteral("20".to_string()),
+                        Expr::StringLiteral(ASTString::from_str("Hello")),
+                        Expr::IntLiteral(ASTString::from_str("20")),
                     ]),
                 ]))]),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("singleList".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("singleList"), None),
                 value: Expr::ArrayLiteral(vec![
-                    Expr::IntLiteral("1".to_string()),
-                    Expr::IntLiteral("2".to_string()),
-                    Expr::IntLiteral("3".to_string()),
-                    Expr::IntLiteral("4".to_string()),
+                    Expr::IntLiteral(ASTString::from_str("1")),
+                    Expr::IntLiteral(ASTString::from_str("2")),
+                    Expr::IntLiteral(ASTString::from_str("3")),
+                    Expr::IntLiteral(ASTString::from_str("4")),
                 ]),
                 mutable: false,
             }),
             TopLevel::Stmt(Stmt::LetStatement {
-                identifier: IdentifierType::Identifier("multiList".to_string(), None),
+                identifier: IdentifierType::Identifier(ASTString::from_str("multiList"), None),
                 value: Expr::Block(vec![Stmt::Expr(Expr::ArrayLiteral(vec![
-                    Expr::IntLiteral("1".to_string()),
-                    Expr::IntLiteral("2".to_string()),
-                    Expr::IntLiteral("3".to_string()),
-                    Expr::IntLiteral("4".to_string()),
+                    Expr::IntLiteral(ASTString::from_str("1")),
+                    Expr::IntLiteral(ASTString::from_str("2")),
+                    Expr::IntLiteral(ASTString::from_str("3")),
+                    Expr::IntLiteral(ASTString::from_str("4")),
                 ]))]),
                 mutable: false,
             }),
@@ -1110,108 +1131,120 @@ else
         vec![
             TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                 condition: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "x".to_string(),
+                    ASTString::from_str("x"),
                     None,
                 ))),
                 consequent: Box::new(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::IntLiteral("1".to_string()),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::IntLiteral(ASTString::from_str("1")),
                     ],
                 }),
                 alternative: None,
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                 condition: Box::new(Expr::FunctionCall {
-                    name: "=".to_string(),
+                    name: ASTString::from_str("="),
                     args: vec![
                         Expr::FunctionCall {
-                            name: "+".to_string(),
+                            name: ASTString::from_str("+"),
                             args: vec![
-                                Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                                Expr::IntLiteral("1".to_string()),
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    ASTString::from_str("x"),
+                                    None,
+                                )),
+                                Expr::IntLiteral(ASTString::from_str("1")),
                             ],
                         },
-                        Expr::IntLiteral("5".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("5")),
                     ],
                 }),
                 consequent: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "x".to_string(),
+                    ASTString::from_str("x"),
                     None,
                 ))),
                 alternative: None,
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                 condition: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "x".to_string(),
+                    ASTString::from_str("x"),
                     None,
                 ))),
                 consequent: Box::new(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::IntLiteral("1".to_string()),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::IntLiteral(ASTString::from_str("1")),
                     ],
                 }),
                 alternative: Some(Box::new(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::IntLiteral("2".to_string()),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::IntLiteral(ASTString::from_str("2")),
                     ],
                 })),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                 condition: Box::new(Expr::FunctionCall {
-                    name: ">".to_string(),
+                    name: ASTString::from_str(">"),
                     args: vec![
                         Expr::Accessor {
                             left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                                "testRecord".to_string(),
+                                ASTString::from_str("testRecord"),
                                 None,
                             ))),
                             right: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                                "Value".to_string(),
+                                ASTString::from_str("Value"),
                                 None,
                             ))),
                         },
-                        Expr::IntLiteral("5".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("5")),
                     ],
                 }),
                 consequent: Box::new(Expr::Block(vec![Stmt::Expr(Expr::RecordLiteral {
                     fields: vec![RecordField {
-                        name: "Value".to_string(),
-                        value: Expr::IntLiteral("5".to_string()),
+                        name: ASTString::from_str("Value"),
+                        value: Expr::IntLiteral(ASTString::from_str("5")),
                     }],
                 })])),
                 alternative: None,
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::IfExpr {
                 condition: Box::new(Expr::FunctionCall {
-                    name: "<".to_string(),
+                    name: ASTString::from_str("<"),
                     args: vec![
                         Expr::Accessor {
                             left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                                "testRecord".to_string(),
+                                ASTString::from_str("testRecord"),
                                 None,
                             ))),
                             right: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                                "Value".to_string(),
+                                ASTString::from_str("Value"),
                                 None,
                             ))),
                         },
-                        Expr::IntLiteral("5".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("5")),
                     ],
                 }),
                 consequent: Box::new(Expr::Block(vec![Stmt::Expr(Expr::Identifier(
-                    IdentifierType::Identifier("testRecord".to_string(), None),
+                    IdentifierType::Identifier(ASTString::from_str("testRecord"), None),
                 ))])),
                 alternative: Some(Box::new(Expr::Block(vec![Stmt::Expr(
                     Expr::RecordLiteral {
                         fields: vec![RecordField {
-                            name: "Value".to_string(),
-                            value: Expr::IntLiteral("5".to_string()),
+                            name: ASTString::from_str("Value"),
+                            value: Expr::IntLiteral(ASTString::from_str("5")),
                         }],
                     },
                 )]))),
@@ -1272,46 +1305,56 @@ arr.[5 * 10]
         vec![
             TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
                 left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "arr".to_string(),
+                    ASTString::from_str("arr"),
                     None,
                 ))),
-                right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral("1".to_string())])),
+                right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral(
+                    ASTString::from_str("1"),
+                )])),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
                 left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "map".to_string(),
+                    ASTString::from_str("map"),
                     None,
                 ))),
                 right: Box::new(Expr::ArrayLiteral(vec![Expr::StringLiteral(
-                    "Hello".to_string(),
+                    ASTString::from_str("Hello"),
                 )])),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
                 left: Box::new(Expr::FunctionCall {
-                    name: "|>".to_string(),
+                    name: ASTString::from_str("|>"),
                     args: vec![
                         Expr::FunctionCall {
-                            name: "+".to_string(),
+                            name: ASTString::from_str("+"),
                             args: vec![
-                                Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                                Expr::IntLiteral("5".to_string()),
+                                Expr::Identifier(IdentifierType::Identifier(
+                                    ASTString::from_str("x"),
+                                    None,
+                                )),
+                                Expr::IntLiteral(ASTString::from_str("5")),
                             ],
                         },
-                        Expr::Identifier(IdentifierType::Identifier("toSlice".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("toSlice"),
+                            None,
+                        )),
                     ],
                 }),
-                right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral("0".to_string())])),
+                right: Box::new(Expr::ArrayLiteral(vec![Expr::IntLiteral(
+                    ASTString::from_str("0"),
+                )])),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Accessor {
                 left: Box::new(Expr::Identifier(IdentifierType::Identifier(
-                    "arr".to_string(),
+                    ASTString::from_str("arr"),
                     None,
                 ))),
                 right: Box::new(Expr::ArrayLiteral(vec![Expr::FunctionCall {
-                    name: "*".to_string(),
+                    name: ASTString::from_str("*"),
                     args: vec![
-                        Expr::IntLiteral("5".to_string()),
-                        Expr::IntLiteral("10".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("5")),
+                        Expr::IntLiteral(ASTString::from_str("10")),
                     ],
                 }])),
             })),
@@ -1382,27 +1425,33 @@ fun _ (x: int): int -> x + 5
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
                 args: vec![IdentifierType::TupleDestructure(
                     vec![
-                        IdentifierType::Identifier("x".to_string(), None),
-                        IdentifierType::Identifier("y".to_string(), None),
+                        IdentifierType::Identifier(ASTString::from_str("x"), None),
+                        IdentifierType::Identifier(ASTString::from_str("y"), None),
                     ],
                     None,
                 )],
                 return_type: None,
                 body: Box::new(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("y"),
+                            None,
+                        )),
                     ],
                 }),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
-                args: vec![IdentifierType::Identifier("x".to_string(), None)],
+                args: vec![IdentifierType::Identifier(ASTString::from_str("x"), None)],
                 return_type: None,
                 body: Box::new(Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                    name: "square".to_string(),
+                    name: ASTString::from_str("square"),
                     args: vec![Expr::Identifier(IdentifierType::Identifier(
-                        "x".to_string(),
+                        ASTString::from_str("x"),
                         None,
                     ))],
                 })])),
@@ -1410,28 +1459,31 @@ fun _ (x: int): int -> x + 5
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
                 args: vec![IdentifierType::Bucket],
                 return_type: None,
-                body: Box::new(Expr::IntLiteral("5".to_string())),
+                body: Box::new(Expr::IntLiteral(ASTString::from_str("5"))),
             })),
             TopLevel::Stmt(Stmt::Expr(Expr::Lambda {
                 args: vec![
                     IdentifierType::Bucket,
                     IdentifierType::Identifier(
-                        "x".to_string(),
+                        ASTString::from_str("x"),
                         Some(Type::Type {
-                            name: "int".to_string(),
+                            name: ASTString::from_str("int"),
                             module: None,
                         }),
                     ),
                 ],
                 return_type: Some(Type::Type {
-                    name: "int".to_string(),
+                    name: ASTString::from_str("int"),
                     module: None,
                 }),
                 body: Box::new(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::IntLiteral("5".to_string()),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::IntLiteral(ASTString::from_str("5")),
                     ],
                 }),
             })),
@@ -1486,36 +1538,51 @@ for (a, b) in (func x y) do
         tokens,
         vec![
             TopLevel::Stmt(Stmt::ForInLoop {
-                condition_arg: IdentifierType::Identifier("x".to_string(), None),
+                condition_arg: IdentifierType::Identifier(ASTString::from_str("x"), None),
                 condition_expr: Expr::FunctionCall {
-                    name: "..".to_string(),
+                    name: ASTString::from_str(".."),
                     args: vec![
-                        Expr::IntLiteral("1".to_string()),
-                        Expr::IntLiteral("10".to_string()),
+                        Expr::IntLiteral(ASTString::from_str("1")),
+                        Expr::IntLiteral(ASTString::from_str("10")),
                     ],
                 },
-                consequent: Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
+                consequent: Expr::Identifier(IdentifierType::Identifier(
+                    ASTString::from_str("x"),
+                    None,
+                )),
             }),
             TopLevel::Stmt(Stmt::ForInLoop {
                 condition_arg: IdentifierType::TupleDestructure(
                     vec![
-                        IdentifierType::Identifier("a".to_string(), None),
-                        IdentifierType::Identifier("b".to_string(), None),
+                        IdentifierType::Identifier(ASTString::from_str("a"), None),
+                        IdentifierType::Identifier(ASTString::from_str("b"), None),
                     ],
                     None,
                 ),
                 condition_expr: Expr::FunctionCall {
-                    name: "func".to_string(),
+                    name: ASTString::from_str("func"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("x".to_string(), None)),
-                        Expr::Identifier(IdentifierType::Identifier("y".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("x"),
+                            None,
+                        )),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("y"),
+                            None,
+                        )),
                     ],
                 },
                 consequent: Expr::Block(vec![Stmt::Expr(Expr::FunctionCall {
-                    name: "+".to_string(),
+                    name: ASTString::from_str("+"),
                     args: vec![
-                        Expr::Identifier(IdentifierType::Identifier("a".to_string(), None)),
-                        Expr::Identifier(IdentifierType::Identifier("b".to_string(), None)),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("a"),
+                            None,
+                        )),
+                        Expr::Identifier(IdentifierType::Identifier(
+                            ASTString::from_str("b"),
+                            None,
+                        )),
                     ],
                 })]),
             }),

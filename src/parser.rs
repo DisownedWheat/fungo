@@ -1,7 +1,7 @@
 use crate::lexer::TokenState;
 
 use super::ast::*;
-use super::lexer::{Token, TokenKind};
+use super::lexer::{Span, Token, TokenKind};
 use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::prelude::*;
 
@@ -26,14 +26,23 @@ enum StrValueType {
     Operator,
 }
 
-fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, String, Simple<Token>> {
-    filter_map(move |span, (kind, state): Token| {
+fn identifier<'a>(t_: StrValueType) -> BoxedParser<'a, Token, ASTString, Simple<Token>> {
+    filter_map(move |span, token: Token| {
+        let (kind, state) = token;
         log::debug!("Attempting to match {:?} as {:?}", kind, t_);
         match (t_, kind.clone()) {
-            (StrValueType::Identifier, TokenKind::Identifier(s)) => Ok(s),
-            (StrValueType::String, TokenKind::StringLiteral(s)) => Ok(s),
-            (StrValueType::Number, TokenKind::NumberLiteral(s)) => Ok(s),
-            (StrValueType::Operator, TokenKind::Operator(s)) => Ok(s),
+            (StrValueType::Identifier, TokenKind::Identifier(_)) => {
+                Ok(ASTString::from_token((kind, state)))
+            }
+            (StrValueType::String, TokenKind::StringLiteral(_)) => {
+                Ok(ASTString::from_token((kind, state)))
+            }
+            (StrValueType::Number, TokenKind::NumberLiteral(_)) => {
+                Ok(ASTString::from_token((kind, state)))
+            }
+            (StrValueType::Operator, TokenKind::Operator(_)) => {
+                Ok(ASTString::from_token((kind, state)))
+            }
             _ => Err(Simple::expected_input_found(
                 span,
                 Vec::new(),
@@ -106,8 +115,10 @@ fn semicolon(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>
         .ignored()
 }
 
-fn assign(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
-    token(TokenKind::Assign, path).labelled("Assign").ignored()
+fn assign(path: &'static str) -> impl Parser<Token, Span, Error = Simple<Token>> {
+    token(TokenKind::Assign, path)
+        .labelled("Assign")
+        .map(|(_, state)| state.span)
 }
 
 fn pipe(path: &'static str) -> impl Parser<Token, (), Error = Simple<Token>> {
@@ -136,7 +147,7 @@ fn import(path: &'static str) -> impl Parser<Token, Token, Error = Simple<Token>
     token(TokenKind::Import, path).labelled("import")
 }
 
-fn ident_token() -> impl Parser<Token, String, Error = Simple<Token>> {
+fn ident_token() -> impl Parser<Token, ASTString, Error = Simple<Token>> {
     identifier(StrValueType::Identifier).labelled("Ident token")
 }
 
@@ -149,7 +160,7 @@ fn str_() -> impl Parser<Token, Expr, Error = Simple<Token>> {
 fn digit() -> impl Parser<Token, Expr, Error = Simple<Token>> {
     identifier(StrValueType::Number)
         .map(|s| {
-            if s.contains(".") {
+            if s.value.contains(".") {
                 Expr::FloatLiteral(s)
             } else {
                 Expr::IntLiteral(s)
@@ -210,7 +221,7 @@ fn type_literal() -> impl Parser<Token, Type, Error = Simple<Token>> {
                         .boxed()
                         .ignore_then(ident_token())
                         .map(|value| Type::Type {
-                            name: value.clone(),
+                            name: value,
                             module: None,
                         })
                         .or_not(),
@@ -219,12 +230,12 @@ fn type_literal() -> impl Parser<Token, Type, Error = Simple<Token>> {
                     Some(x) => match x {
                         Type::Type { name, .. } => Type::Type {
                             name,
-                            module: Some(a.clone()),
+                            module: Some(a),
                         },
                         _ => panic!(),
                     },
                     None => Type::Type {
-                        name: a.clone(),
+                        name: a,
                         module: None,
                     },
                 }),
@@ -237,7 +248,7 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
     let base_ident = (pointer("Ident").then(deref("Ident")))
         .then(ident_token())
         .map(
-            |((is_pointer, is_deref), s)| match (is_pointer, is_deref, s.as_str()) {
+            |((is_pointer, is_deref), s)| match (is_pointer, is_deref, s.value.as_str()) {
                 (false, false, "_") => IdentifierType::Bucket,
                 (true, false, _) => {
                     IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, None)))
@@ -258,13 +269,15 @@ fn ident() -> impl Parser<Token, IdentifierType, Error = Simple<Token>> {
             .then_ignore(colon("Ident"))
             .then(type_literal())
             .then_ignore(rparen("Ident"))
-            .map(|((is_pointer, s), t)| match (is_pointer, s.as_str()) {
-                (false, "_") => IdentifierType::Bucket,
-                (true, _) => {
-                    IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, Some(t))))
-                }
-                _ => IdentifierType::Identifier(s, Some(t)),
-            })
+            .map(
+                |((is_pointer, s), t)| match (is_pointer, s.value.as_str()) {
+                    (false, "_") => IdentifierType::Bucket,
+                    (true, _) => {
+                        IdentifierType::Pointer(Box::new(IdentifierType::Identifier(s, Some(t))))
+                    }
+                    _ => IdentifierType::Identifier(s, Some(t)),
+                },
+            )
             .labelled("Typed_Ident"),
     ))
     .boxed()
@@ -483,7 +496,7 @@ fn expr<'a>(
                 lbrace("Record Literal Single Line").boxed(),
                 rbrace("Record Literal Single Line").boxed(),
             )
-            .map(|x: Vec<(String, Expr)>| Expr::RecordLiteral {
+            .map(|x: Vec<(ASTString, Expr)>| Expr::RecordLiteral {
                 fields: x
                     .into_iter()
                     .map(|(name, value)| RecordField { name, value })
@@ -508,7 +521,7 @@ fn expr<'a>(
                 lbrace("Record Literal Multi Line").boxed(),
                 rbrace("Record Literal Multi Line").boxed(),
             )
-            .map(|x: Vec<(String, Expr)>| Expr::RecordLiteral {
+            .map(|x: Vec<(ASTString, Expr)>| Expr::RecordLiteral {
                 fields: x
                     .into_iter()
                     .map(|(name, value)| RecordField { name, value })
@@ -628,8 +641,12 @@ fn expr<'a>(
 
         let binary_op = choice((
             identifier(StrValueType::Operator),
-            // (token(TokenKind::Deref, "Binary Expr").map(|_| "*".to_string())).boxed(),
-            assign("Binary Expr").to("=".to_string()).boxed(),
+            assign("Binary Expr")
+                .map(|span| ASTString {
+                    value: "=".to_string(),
+                    span,
+                })
+                .boxed(),
         ));
 
         choice((
@@ -655,11 +672,15 @@ fn expr<'a>(
         .map(map_binary_expr)
     })
     .labelled("Expression")
+    .map(|x| {
+        log::debug!("Parsed EXPR: {:?}", x);
+        x
+    })
     .boxed()
 }
 
 // Recursively reverse the order of function calls to make it easier to evaluate later
-fn map_binary_expr((left, right): (Expr, Option<(String, Expr)>)) -> Expr {
+fn map_binary_expr((left, right): (Expr, Option<(ASTString, Expr)>)) -> Expr {
     if let Some((name, expression)) = right {
         match expression {
             Expr::FunctionCall {
@@ -827,6 +848,10 @@ fn stmt() -> impl Parser<Token, Stmt, Error = Simple<Token>> {
         ))
         .padded_by(token(TokenKind::Comment, "Stmt").or_not().ignored())
         .padded_by(newline("Stmt").or_not().ignored())
+        .map(|x| {
+            log::debug!("Parsed STMT: {:?}", x);
+            x
+        })
         .labelled("Statement")
     })
 }

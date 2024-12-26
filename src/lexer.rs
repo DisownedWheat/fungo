@@ -1,7 +1,7 @@
 use ariadne::{self, Label, Report, ReportKind, Source};
 use logos::Logos;
 use serde::Serialize;
-use std::{error::Error, fmt::Display, ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc};
 
 fn clean_string<'s>(lexer: &mut logos::Lexer<'s, TokenKind>) -> String {
     let value = lexer.slice();
@@ -126,21 +126,13 @@ impl TokenKind {
     }
 }
 
-type Span = Range<usize>;
+pub type Span = Range<usize>;
 
 #[derive(Debug)]
 pub enum LexerError {
     InvalidParseStep,
     FileNotFound(String),
 }
-
-impl Display for LexerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
-impl Error for LexerError {}
 
 pub type Token = (TokenKind, TokenState);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -186,7 +178,7 @@ impl OpFolder {
     }
 }
 
-pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
+pub fn lex_raw(input: &str) -> Result<(Vec<Token>, Rc<String>), LexerError> {
     let path = Rc::new("stdin".to_string());
     let input_rc = Rc::new(input.to_string());
 
@@ -242,10 +234,10 @@ pub fn lex_raw(input: &str) -> Result<Vec<Token>, LexerError> {
         WhiteSpaceParser::new(filtered_tokens, input_rc.clone(), path.clone());
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
-    return Ok(parsed_output);
+    return Ok((parsed_output, input_rc));
 }
 
-pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
+pub fn lex(file_path: &str) -> Result<(Vec<Token>, Rc<String>), LexerError> {
     // Get the source code as a Rc<String>
     let input = match std::fs::read_to_string(file_path) {
         Ok(i) => Rc::new(i),
@@ -309,7 +301,7 @@ pub fn lex(file_path: &str) -> Result<Vec<Token>, LexerError> {
         WhiteSpaceParser::new(filtered_tokens, input.clone(), refcounted_file_path.clone());
     whitespace_parser.parse();
     let parsed_output = whitespace_parser.get_output();
-    return Ok(parsed_output);
+    return Ok((parsed_output, input));
 }
 
 struct WhiteSpaceParser {
@@ -544,7 +536,12 @@ let x =
         ];
         let output = lex_raw(input);
         assert!(output.is_ok());
-        let kinds: Vec<TokenKind> = output.unwrap().into_iter().map(|(kind, _)| kind).collect();
+        let kinds: Vec<TokenKind> = output
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|(kind, _)| kind)
+            .collect();
         assert_eq!(kinds, expected_output);
     }
 
@@ -585,7 +582,12 @@ b && c
         ];
         let output = lex_raw(input);
         assert!(output.is_ok());
-        let kinds: Vec<TokenKind> = output.unwrap().into_iter().map(|(kind, _)| kind).collect();
+        let kinds: Vec<TokenKind> = output
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|(kind, _)| kind)
+            .collect();
         assert_eq!(kinds, expected_output);
     }
 }
