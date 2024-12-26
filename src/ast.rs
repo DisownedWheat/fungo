@@ -190,7 +190,7 @@ pub enum Stmt {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum TopLevel {
-    NameSpace(ASTString),
+    NameSpace(Vec<ASTString>),
     GoImport {
         module: ASTString,
         alias: Option<ASTString>,

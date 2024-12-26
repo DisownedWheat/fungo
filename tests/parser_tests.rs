@@ -33,7 +33,7 @@ fn lex_input(input: &str, expected: Vec<TokenKind>) -> Vec<Token> {
     tokens
 }
 
-fn parse_input(input: Vec<Token>) -> Vec<TopLevel> {
+fn parse_input(input: Vec<Token>) -> (Vec<ASTString>, Vec<TopLevel>) {
     let output_result = parser()
         .parse(input)
         .inspect_err(|errs| errs.iter().for_each(|e| error_report(e)));
@@ -44,7 +44,7 @@ fn parse_input(input: Vec<Token>) -> Vec<TopLevel> {
 fn match_output(tokens: Vec<Token>, expected: Vec<TopLevel>) {
     let output = parse_input(tokens);
     assert_eq!(
-        output,
+        output.1,
         expected,
         "\nGot: {}\nExpected: {}\n",
         serde_json::to_string_pretty(&output).unwrap().red(),
@@ -56,6 +56,7 @@ fn match_output(tokens: Vec<Token>, expected: Vec<TopLevel>) {
 fn test_func_calls() {
     setup();
     let input = "
+namespace test
 x y 2
 y
 	(5 +
@@ -66,6 +67,9 @@ y
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::ident("x"),
             TokenKind::ident("y"),
             TokenKind::num("2"),
@@ -117,6 +121,7 @@ y
 fn test_opens() {
     setup();
     let input = "
+namespace test
 open \"fmt\"
 open Test
 testCall
@@ -127,6 +132,9 @@ testCall
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Import,
             TokenKind::str("fmt"),
             TokenKind::NewLine,
@@ -153,10 +161,10 @@ testCall
     let _ = match_output(
         tokens,
         vec![
-            TopLevel::GoImport(GoImport {
+            TopLevel::GoImport {
                 module: ASTString::from_str("fmt"),
                 alias: None,
-            }),
+            },
             TopLevel::FungoImport(FungoImport {
                 module: ASTString::from_str("Test"),
             }),
@@ -179,12 +187,16 @@ testCall
 fn block_expression() {
     setup();
     let input = "
+namespace test
 let x =
 	testFunc 0 1 \"a\"
 ";
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Let,
             TokenKind::ident("x"),
             TokenKind::Assign,
@@ -221,6 +233,7 @@ fn type_definitions() {
     setup();
     {
         let input = "
+namespace test
 type Testing = {x: int; y: int}
 type TestRecord = {
 	TestVal: []*int
@@ -233,6 +246,9 @@ type TestRecord = {
         let tokens = lex_input(
             input,
             vec![
+                TokenKind::NameSpace,
+                TokenKind::ident("test"),
+                TokenKind::NewLine,
                 TokenKind::TypeKeyword,
                 TokenKind::ident("Testing"),
                 TokenKind::Assign,
@@ -333,11 +349,15 @@ type TestRecord = {
     }
     {
         let input = "
+namespace test
 type TestTuple = (int, string, TestRecord)
 ";
         let tokens = lex_input(
             input,
             vec![
+                TokenKind::NameSpace,
+                TokenKind::ident("test"),
+                TokenKind::NewLine,
                 TokenKind::TypeKeyword,
                 TokenKind::ident("TestTuple"),
                 TokenKind::Assign,
@@ -377,6 +397,7 @@ type TestTuple = (int, string, TestRecord)
     }
     {
         let input = "
+namespace test
 type TestADT =
 	| Test
 	| Testing of string
@@ -386,6 +407,9 @@ type Test2 = | Test	| Testing of int
         let tokens = lex_input(
             input,
             vec![
+                TokenKind::NameSpace,
+                TokenKind::ident("test"),
+                TokenKind::NewLine,
                 TokenKind::TypeKeyword,
                 TokenKind::ident("TestADT"),
                 TokenKind::Assign,
@@ -424,6 +448,7 @@ type Test2 = | Test	| Testing of int
 fn test_binary_expr() {
     setup();
     let input = "
+namespace test
 x * 5
 (\"test\") + \"Hello\"
 x.InsideValue -
@@ -439,6 +464,9 @@ x *y
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::ident("x"),
             TokenKind::op("*"),
             TokenKind::num("5"),
@@ -603,6 +631,7 @@ x *y
 fn test_let_stmt() {
     setup();
     let input = "
+namespace test
 let x = 1
 let y = 2
 let z = {TestValue = true}
@@ -615,6 +644,9 @@ let b =
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Let,
             TokenKind::ident("x"),
             TokenKind::Assign,
@@ -721,6 +753,7 @@ let b =
 fn test_func_definition() {
     setup();
     let input = "
+namespace test
 let firstTest x y = x + y
 let testFunc x (y: int) z: int =
 	let result = x + 1
@@ -729,6 +762,9 @@ let testFunc x (y: int) z: int =
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Let,
             TokenKind::ident("firstTest"),
             TokenKind::ident("x"),
@@ -846,6 +882,7 @@ let testFunc x (y: int) z: int =
 fn test_literals() {
     setup();
     let input = "
+namespace test
 let singleLine = {TestValue = \"Test\"; Val = true}
 let multiLine =
 	{
@@ -868,6 +905,9 @@ let multiList =
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Let,
             TokenKind::ident("singleLine"),
             TokenKind::Assign,
@@ -1044,6 +1084,7 @@ let multiList =
 fn test_if_expr() {
     setup();
     let input = "
+namespace test
 if x then x + 1
 if x + 1 = 5 then x
 if x then x + 1 else x + 2
@@ -1058,6 +1099,9 @@ else
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::If,
             TokenKind::ident("x"),
             TokenKind::Then,
@@ -1257,6 +1301,7 @@ else
 fn test_indexing() {
     setup();
     let input = "
+namespace test
 arr.[1]
 map.[\"Hello\"]
 (x + 5 |> toSlice).[0]
@@ -1265,6 +1310,9 @@ arr.[5 * 10]
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::ident("arr"),
             TokenKind::Dot,
             TokenKind::LBracket,
@@ -1366,6 +1414,7 @@ arr.[5 * 10]
 fn test_lambda() {
     setup();
     let input = "
+namespace test
 fun (x, y) -> x + y
 (fun x ->
 	square x)
@@ -1375,6 +1424,9 @@ fun _ (x: int): int -> x + 5
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::Lambda,
             TokenKind::LParen,
             TokenKind::ident("x"),
@@ -1495,6 +1547,7 @@ fun _ (x: int): int -> x + 5
 fn test_for_in_loop() {
     setup();
     let input = "
+namespace test
 for x in 1 .. 10 do x
 for (a, b) in (func x y) do
 	a + b
@@ -1502,6 +1555,9 @@ for (a, b) in (func x y) do
     let tokens = lex_input(
         input,
         vec![
+            TokenKind::NameSpace,
+            TokenKind::ident("test"),
+            TokenKind::NewLine,
             TokenKind::For,
             TokenKind::ident("x"),
             TokenKind::In,
@@ -1588,4 +1644,65 @@ for (a, b) in (func x y) do
             }),
         ],
     );
+}
+
+#[test]
+fn test_namespaces() {
+    setup();
+    {
+        let input = "
+namespace test
+let x = 1
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::NameSpace,
+                TokenKind::ident("test"),
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("x"),
+                TokenKind::Assign,
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+            ],
+        );
+        let output = parse_input(tokens);
+        assert_eq!(output.0, vec![ASTString::from_str("test")])
+    }
+    {
+        let input = "
+namespace test.mod.base.path
+let x = 1
+";
+        let tokens = lex_input(
+            input,
+            vec![
+                TokenKind::NameSpace,
+                TokenKind::ident("test"),
+                TokenKind::Dot,
+                TokenKind::ident("mod"),
+                TokenKind::Dot,
+                TokenKind::ident("base"),
+                TokenKind::Dot,
+                TokenKind::ident("path"),
+                TokenKind::NewLine,
+                TokenKind::Let,
+                TokenKind::ident("x"),
+                TokenKind::Assign,
+                TokenKind::num("1"),
+                TokenKind::NewLine,
+            ],
+        );
+        let output = parse_input(tokens);
+        assert_eq!(
+            output.0,
+            vec![
+                ASTString::from_str("test"),
+                ASTString::from_str("mod"),
+                ASTString::from_str("base"),
+                ASTString::from_str("path"),
+            ]
+        )
+    }
 }

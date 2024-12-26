@@ -878,7 +878,24 @@ fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
         })
 }
 
-pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
+pub fn namespace_parser() -> impl Parser<Token, Vec<ASTString>, Error = Simple<Token>> {
+    token(TokenKind::NameSpace, "Namespace")
+        .ignore_then(ident_token())
+        .then(((token(TokenKind::Dot, "Namespace").ignore_then(ident_token())).repeated()).or_not())
+        .then_ignore(newline("Namespace"))
+        .map(|(base, is_rest)| {
+            if let Some(rest) = is_rest {
+                let mut new_vec: Vec<ASTString> = Vec::with_capacity(rest.len() + 1);
+                new_vec.push(base);
+                new_vec.extend(rest);
+                new_vec
+            } else {
+                vec![base]
+            }
+        })
+}
+
+pub fn parser() -> impl Parser<Token, (Vec<ASTString>, Vec<TopLevel>), Error = Simple<Token>> {
     let go_import = go_import();
     let fungo_import = fungo_import();
     let stmt = stmt().boxed();
@@ -891,7 +908,7 @@ pub fn parser() -> impl Parser<Token, Vec<TopLevel>, Error = Simple<Token>> {
     .recover_with(skip_then_retry_until([]))
     .debug("Post top-level statement");
 
-    top_level_stmt.repeated().at_least(1)
+    namespace_parser().then(top_level_stmt.repeated().at_least(1))
 }
 
 pub fn error_report(err: &Simple<Token>) {

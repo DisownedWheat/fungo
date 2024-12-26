@@ -58,6 +58,8 @@ pub enum TokenKind {
     Module,
     #[token("fun")]
     Lambda,
+    #[token("namespace")]
+    NameSpace,
 
     #[token("for")]
     For,
