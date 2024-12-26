@@ -62,6 +62,7 @@ y
 	(5 +
 	4)
 	\"Hello World\"
+a (h * w) 2
 ";
 
     let tokens = lex_input(
@@ -87,6 +88,14 @@ y
             TokenKind::str("Hello World"),
             TokenKind::NewLine,
             TokenKind::Dedent,
+            TokenKind::ident("a"),
+            TokenKind::LParen,
+            TokenKind::ident("h"),
+            TokenKind::op("*"),
+            TokenKind::ident("w"),
+            TokenKind::RParen,
+            TokenKind::num("2"),
+            TokenKind::NewLine,
         ],
     );
 
@@ -111,6 +120,25 @@ y
                         ],
                     },
                     Expr::StringLiteral(ASTString::from_str("Hello World")),
+                ],
+            })),
+            TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
+                name: ASTString::from_str("a"),
+                args: vec![
+                    Expr::FunctionCall {
+                        name: ASTString::from_str("*"),
+                        args: vec![
+                            Expr::Identifier(IdentifierType::Identifier(
+                                ASTString::from_str("h"),
+                                None,
+                            )),
+                            Expr::Identifier(IdentifierType::Identifier(
+                                ASTString::from_str("w"),
+                                None,
+                            )),
+                        ],
+                    },
+                    Expr::IntLiteral(ASTString::from_str("2")),
                 ],
             })),
         ],
