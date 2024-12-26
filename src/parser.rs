@@ -861,10 +861,10 @@ fn go_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
         .ignore_then(str_())
         .then_ignore(newline("Go Import")))
     .map(|s| match s {
-        Expr::StringLiteral(value) => TopLevel::GoImport(GoImport {
+        Expr::StringLiteral(value) => TopLevel::GoImport {
             module: value,
             alias: None,
-        }),
+        },
         _ => panic!(),
     })
 }

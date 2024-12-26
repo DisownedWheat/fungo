@@ -190,7 +190,11 @@ pub enum Stmt {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub enum TopLevel {
-    GoImport(GoImport),
+    NameSpace(ASTString),
+    GoImport {
+        module: ASTString,
+        alias: Option<ASTString>,
+    },
     FungoImport(FungoImport),
     Stmt(Stmt),
 }
