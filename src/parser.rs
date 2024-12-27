@@ -873,6 +873,18 @@ fn fungo_import() -> impl Parser<Token, TopLevel, Error = Simple<Token>> {
     import("Import")
         .ignore_then(ident_token())
         .then_ignore(newline("Import"))
+        .then(((token(TokenKind::Dot, "Import").ignore_then(ident_token())).repeated()).or_not())
+        .then_ignore(newline("Import"))
+        .map(|(base, is_rest)| {
+            if let Some(rest) = is_rest {
+                let mut new_vec: Vec<ASTString> = Vec::with_capacity(rest.len() + 1);
+                new_vec.push(base);
+                new_vec.extend(rest);
+                new_vec
+            } else {
+                vec![base]
+            }
+        })
         .map(|s| {
             return TopLevel::FungoImport(FungoImport { module: s });
         })

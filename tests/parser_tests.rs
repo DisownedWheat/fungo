@@ -194,7 +194,7 @@ testCall
                 alias: None,
             },
             TopLevel::FungoImport(FungoImport {
-                module: ASTString::from_str("Test"),
+                module: vec![ASTString::from_str("Test")],
             }),
             TopLevel::Stmt(Stmt::Expr(Expr::FunctionCall {
                 name: ASTString::from_str("testCall"),

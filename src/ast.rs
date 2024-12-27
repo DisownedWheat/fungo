@@ -3,13 +3,20 @@
 use crate::lexer::{Span, Token, TokenKind};
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ASTString {
     pub value: String,
     pub span: Span,
 }
 
 impl ASTString {
+    pub fn default() -> Self {
+        ASTString {
+            value: String::new(),
+            span: 0..0,
+        }
+    }
+
     pub fn from_str(value: &str) -> Self {
         ASTString {
             value: value.to_string(),
@@ -17,6 +24,12 @@ impl ASTString {
         }
     }
 
+    pub fn from_str_with_span(value: &str, span: Span) -> Self {
+        ASTString {
+            value: value.to_string(),
+            span,
+        }
+    }
     pub fn from_token((kind, state): Token) -> Self {
         match kind {
             TokenKind::StringLiteral(value)
@@ -40,9 +53,9 @@ impl PartialEq for ASTString {
 impl Eq for ASTString {}
 
 // Imports
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
 pub struct FungoImport {
-    pub module: ASTString,
+    pub module: Vec<ASTString>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]

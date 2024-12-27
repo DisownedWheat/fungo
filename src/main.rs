@@ -1,7 +1,10 @@
 use chumsky::prelude::Parser;
+use chumsky::Span;
 use colored::*;
 use fungo::lexer::lex;
 use fungo::parser::{error_report, parser};
+use std::ops::Range;
+use type_checker::TypeChecker;
 mod type_checker;
 use serde_json::to_string_pretty;
 
@@ -26,4 +29,9 @@ fn main() {
             panic!();
         }
     };
+
+    let type_checker = TypeChecker::new();
+    let modules = type_checker.get_modules(&ast);
+
+    log::info!("{:?}", modules);
 }
