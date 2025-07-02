@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "codelldb",
+      "request": "launch",
+      // "preLaunchTask": "Build",
+      "Name": "Debug",
+      "program": "${workspaceFolder}/fungo",
+      "args": ["build", "test_files/test.fg"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

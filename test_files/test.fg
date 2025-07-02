@@ -1,0 +1,11 @@
+let x = 1
+let main (arg1: string) = {
+	if arg1 == "Hello World" {
+		arg1.append('!')
+	}
+	arg1 + x
+}
+
+module Testing = (innerModule: A) {
+	type t = A.t
+}
