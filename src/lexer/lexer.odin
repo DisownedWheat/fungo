@@ -62,6 +62,8 @@ TokenKind :: enum {
 	Dot,
 	Comma,
 	Assign,
+	EOF,
+	ModuleFileName,
 }
 
 LexerState :: enum {
@@ -78,11 +80,30 @@ LexerErr :: enum {
 }
 
 Token :: struct {
-	kind: TokenKind,
-	span: [2]int,
+	kind:  TokenKind,
+	span:  [2]int,
+	lexer: ^Lexer,
 }
 
-OPERATORS := [?]rune{'+', '-', '=', '!', '@', '%', '*', '/', '^', '|', '<', '>', '?', ':', ';'}
+OPERATORS := [?]rune {
+	'+',
+	'-',
+	'=',
+	'!',
+	'@',
+	'%',
+	'*',
+	'/',
+	'^',
+	'|',
+	'<',
+	'>',
+	'?',
+	':',
+	';',
+	'.',
+	',',
+}
 
 Keywords: map[string]TokenKind = map[string]TokenKind {
 	"let"       = .Let,
@@ -100,10 +121,12 @@ Keywords: map[string]TokenKind = map[string]TokenKind {
 	"interface" = .Interface,
 	"rec"       = .Rec,
 	"match"     = .Match,
+	"import"    = .Import,
 }
 
 Lexer :: struct {
 	input:        string,
+	file_name:    string,
 	position:     int,
 	line:         int,
 	column:       int,
@@ -113,18 +136,38 @@ Lexer :: struct {
 	tokens:       [dynamic]Token,
 }
 
-print_tokens :: proc(l: Lexer) {
-	for token in l.tokens {
-		fmt.printfln("%s :: %s", token.kind, l.input[token.span[0]:token.span[1]])
+eof_token :: proc(allocator := context.allocator) -> ^Token {
+	token := new(Token, allocator)
+	token^ = {
+		kind = .EOF,
+		span = {0, 0},
 	}
+	return token
 }
 
-log_tokens :: proc(l: Lexer) {
+print_tokens_lexer :: proc(l: Lexer) {
 	for token in l.tokens {
 		log.infof("%s :: '%s'", token.kind, l.input[token.span[0]:token.span[1]])
 	}
 }
 
+print_tokens_tokens :: proc(ts: []Token) {
+	for token in ts {
+		log.infof("%s :: '%s'", token.kind, token.lexer^.input[token.span[0]:token.span[1]])
+	}
+}
+
+print_tokens :: proc {
+	print_tokens_lexer,
+	print_tokens_tokens,
+}
+
+@(private)
+lexer_skip_char :: proc(lexer: ^Lexer, char: rune) {
+	lexer.span_start += utf8.rune_size(char)
+}
+
+@(private)
 move_info_position :: proc(l: ^Lexer, char: rune) {
 	switch char {
 	case '\r', '\n':
@@ -134,6 +177,7 @@ move_info_position :: proc(l: ^Lexer, char: rune) {
 	}
 }
 
+@(private)
 change_state :: proc(lexer: ^Lexer, state: LexerState) {
 
 	// If we're switching to the default state and the first char of the buffer is an int
@@ -160,33 +204,33 @@ change_state :: proc(lexer: ^Lexer, state: LexerState) {
 	}
 }
 
-new_lexer :: proc(input: string) -> Lexer {
-	lexer := Lexer {
+@(private)
+new_lexer :: proc(file_name: string, input: string, allocator := context.allocator) -> ^Lexer {
+	lexer := new(Lexer, allocator)
+	lexer^ = {
 		change_state = change_state,
 		state        = .Default,
 		input        = input,
+		file_name    = file_name,
 		line         = 1,
 		column       = 1,
 	}
 	return lexer
 }
 
+@(private)
 add_simple_token :: proc(lexer: ^Lexer, kind: TokenKind, char: rune) {
-	log.info(lexer.span_start, lexer.position, lexer.input[lexer.position:lexer.position])
 	parse_buffer(lexer)
 	size := utf8.rune_size(char)
-	log.info(
-		lexer.position,
-		lexer.position + size,
-		lexer.input[lexer.position:lexer.position + size],
-	)
 	token := Token {
-		kind = kind,
-		span = {lexer.span_start + size, lexer.position + size},
+		kind  = kind,
+		span  = {lexer.span_start + size, lexer.position + size},
+		lexer = lexer,
 	}
 	append(&lexer.tokens, token)
 }
 
+@(private)
 parse_buffer :: proc(lexer: ^Lexer) {
 	defer {
 		count := 0
@@ -212,65 +256,81 @@ parse_buffer :: proc(lexer: ^Lexer) {
 	switch lexer.state {
 	case .Char:
 		token = Token {
-			kind = .CharLiteral,
-			span = {lexer.span_start, lexer.position},
+			kind  = .CharLiteral,
+			span  = {lexer.span_start, lexer.position},
+			lexer = lexer,
 		}
 	case .String:
 		token = Token {
-			kind = .StringLiteral,
-			span = {lexer.span_start, lexer.position},
+			kind  = .StringLiteral,
+			span  = {lexer.span_start, lexer.position},
+			lexer = lexer,
 		}
 	case .Operator:
 		token = Token {
-			kind = .Operator,
-			span = {lexer.span_start, lexer.position},
+			kind  = .Operator,
+			span  = {lexer.span_start, lexer.position},
+			lexer = lexer,
 		}
 	case .Int:
 		token = Token {
-			kind = .IntLiteral,
-			span = {lexer.span_start, lexer.position},
+			kind  = .IntLiteral,
+			span  = {lexer.span_start, lexer.position},
+			lexer = lexer,
 		}
 	case .Float:
 		token = Token {
-			kind = .FloatLiteral,
-			span = {lexer.span_start, lexer.position},
+			kind  = .FloatLiteral,
+			span  = {lexer.span_start, lexer.position},
+			lexer = lexer,
 		}
 	case .Default:
 		str := string(lexer.input[lexer.span_start:lexer.position])
 		keyword, ok := &Keywords[str]
 		if ok {
 			token = {
-				kind = keyword^,
-				span = {lexer.span_start, lexer.position},
+				kind  = keyword^,
+				span  = {lexer.span_start, lexer.position},
+				lexer = lexer,
 			}
 		} else {
 			token = {
-				kind = .Identifier,
-				span = {lexer.span_start, lexer.position},
+				kind  = .Identifier,
+				span  = {lexer.span_start, lexer.position},
+				lexer = lexer,
 			}
 		}
 	}
 	append(&lexer.tokens, token)
 }
 
+@(private)
 default_lexing_case :: proc(lexer: ^Lexer, char: rune) {
 	switch char {
-	case '.':
-		add_simple_token(lexer, .Dot, char)
-	case ',':
-		add_simple_token(lexer, .Comma, char)
+	// case '.':
+	// 	add_simple_token(lexer, .Dot, char)
+	// 	lexer.span_start += 1
+	// case ',':
+	// 	add_simple_token(lexer, .Comma, char)
+	// 	lexer.span_start += 1
 	case '(':
 		add_simple_token(lexer, .LParen, char)
+		lexer.span_start += 1
 	case ')':
 		add_simple_token(lexer, .RParen, char)
+		lexer.span_start += 1
 	case '[':
 		add_simple_token(lexer, .LBracket, char)
+		lexer.span_start += 1
 	case ']':
 		add_simple_token(lexer, .RBracket, char)
+		lexer.span_start += 1
 	case '{':
 		add_simple_token(lexer, .LBrace, char)
+		lexer.span_start += 1
 	case '}':
 		add_simple_token(lexer, .RBrace, char)
+		lexer.span_start += 1
 	case '0' ..= '9':
 		if lexer.position - lexer.span_start == 0 {
 			lexer->change_state(.Int)
@@ -286,9 +346,15 @@ default_lexing_case :: proc(lexer: ^Lexer, char: rune) {
 	}
 }
 
-
-lex :: proc(input: string) -> (Lexer, LexerErr) {
-	lexer := new_lexer(input)
+lex :: proc(
+	input: string,
+	file_name: string = "",
+	allocator := context.allocator,
+) -> (
+	^Lexer,
+	LexerErr,
+) {
+	lexer := new_lexer(file_name, input)
 
 	for char in lexer.input {
 		defer lexer.position += utf8.rune_size(char)
@@ -297,29 +363,32 @@ lex :: proc(input: string) -> (Lexer, LexerErr) {
 		case .Default:
 			switch char {
 			case ' ', '\t', '\n', '\r':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer.span_start += utf8.rune_size(char)
 			case '\'':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.Char)
 			case '"':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.String)
 			case:
-				default_lexing_case(&lexer, char)
+				default_lexing_case(lexer, char)
 			}
 		case .Char:
 			switch char {
 			case '\'':
-				parse_buffer(&lexer)
+				lexer.span_start += 1
+				parse_buffer(lexer)
 				lexer->change_state(.Default)
 			case:
 			}
 		case .String:
 			switch char {
 			case '\"':
-				parse_buffer(&lexer)
+				lexer.span_start += 1
+				parse_buffer(lexer)
 				lexer->change_state(.Default)
+				lexer_skip_char(lexer, char)
 			case:
 			}
 		case .Operator:
@@ -333,7 +402,7 @@ lex :: proc(input: string) -> (Lexer, LexerErr) {
 			if op_flag {
 				continue
 			}
-			parse_buffer(&lexer)
+			parse_buffer(lexer)
 			switch char {
 			case '\'':
 				lexer->change_state(.Char)
@@ -351,17 +420,17 @@ lex :: proc(input: string) -> (Lexer, LexerErr) {
 				lexer->change_state(.Float)
 			case '0' ..= '9', '_':
 			case '\'':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.Char)
 			case '"':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.String)
 			case '\t', ' ', '\n', '\r':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer.span_start = lexer.position + 1
 				lexer->change_state(.Default)
 			case:
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.Default)
 			}
 		case .Float:
@@ -370,23 +439,23 @@ lex :: proc(input: string) -> (Lexer, LexerErr) {
 				return lexer, .UnexpectedChar
 			case '0' ..= '9', '_':
 			case '\'':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.Char)
 			case '"':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.String)
 			case '\t', ' ', '\n', '\r':
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer.span_start = lexer.position + 1
 				lexer->change_state(.Default)
 			case:
-				parse_buffer(&lexer)
+				parse_buffer(lexer)
 				lexer->change_state(.Default)
 			}
 		}
 	}
 
-	parse_buffer(&lexer)
+	parse_buffer(lexer)
 
 	return lexer, nil
 }

@@ -1,3 +1,7 @@
+import "Hello"
+import test
+import testing.mod
+import _ "alias"
 let x = 1
 let main (arg1: string) = {
 	if arg1 == "Hello World" {

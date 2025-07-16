@@ -1,15 +1,21 @@
 package ast
 
 import "../lexer"
+import "core:log"
 
-Atom :: union {
-	Identifier,
-	IntLiteral,
-	FloatLiteral,
-	StringLiteral,
-	CharLiteral,
-	BoolLiteral,
+Node_Index :: distinct int
+Expr_Index :: distinct int
+Stmt_Index :: distinct int
+Ident_Index :: distinct int
+
+Regular_Index :: union {
+	Expr_Index,
+	Stmt_Index,
+	Ident_Index,
 }
+
+Stmt_List :: distinct [dynamic]Statement
+TopLevel_List :: distinct [dynamic]TopLevel
 
 Statement :: union {
 	LetStatement,
@@ -18,7 +24,12 @@ Statement :: union {
 }
 
 Expression :: union {
-	Atom,
+	Identifier,
+	IntLiteral,
+	FloatLiteral,
+	StringLiteral,
+	CharLiteral,
+	BoolLiteral,
 	Block,
 	RecordLiteral,
 	ArrayLiteral,
@@ -55,7 +66,8 @@ BoolLiteral :: struct {
 
 RecordField :: struct {
 	using _: BaseNode,
-	value:   ^Expression,
+	name:    Ident_Index,
+	value:   Expr_Index,
 }
 
 RecordLiteral :: struct {
@@ -63,52 +75,52 @@ RecordLiteral :: struct {
 }
 
 ArrayLiteral :: struct {
-	values: [dynamic]Expression,
+	values: [dynamic]Expr_Index,
 }
 
 TupleLiteral :: struct {
-	values: [dynamic]Expression,
+	values: [dynamic]Expr_Index,
 }
 
 LetStatement :: struct {
-	using _:   BaseNode,
-	mutable:   bool,
-	recursive: bool,
-	value:     ^Expression,
+	using _: BaseNode,
+	mutable: bool,
+	bind:    Ident_Index,
+	value:   Expr_Index,
 }
 
 Block :: struct {
-	statements: [dynamic]Statement,
-	args:       Maybe([dynamic]IdentifierType),
+	statements: [dynamic]Stmt_Index,
+	args:       Maybe([dynamic]Ident_Index),
 }
 
 IfExpression :: struct {
-	condition:   ^Expression,
-	consequent:  ^Expression,
-	alternative: Maybe(^Expression),
+	condition:   Expr_Index,
+	consequent:  Expr_Index,
+	alternative: Maybe(Expr_Index),
 }
 
 FunctionCall :: struct {
 	using _: BaseNode,
-	args:    [dynamic]Expression,
+	args:    [dynamic]Expr_Index,
 	op:      bool,
 }
 
 Accessor :: struct {
-	left:  ^Expression,
-	right: ^Expression,
+	left:  Expr_Index,
+	right: Expr_Index,
 }
 
 ForLoop :: struct {
 	using _:   BaseNode,
-	condition: Maybe(Expression),
-	body:      Expression,
+	condition: Maybe(Expr_Index),
+	body:      Expr_Index,
 }
 
 ModuleDefinition :: struct {
 	using _: BaseNode,
 	name:    Maybe(ASTString),
-	body:    [dynamic]TopLevel,
+	body:    [dynamic]Node_Index,
 }
 
 GoImport :: struct {
@@ -124,10 +136,10 @@ TopLevel :: union {
 	GoImport,
 	FungoImport,
 	TypeDefinition,
-	ModuleDefinition,
+	LetStatement,
 }
 
-Node :: union {
-	TopLevel,
-	Statement,
+print_node :: proc(node: $T/BaseNode) {
+	token := node.token
+	log.infof("%s :: %s", token.kind, token.lexer^.input[token.span[0]:token.span[1]])
 }

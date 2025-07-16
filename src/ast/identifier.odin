@@ -2,6 +2,7 @@ package ast
 
 Identifier :: struct {
 	using _: BaseNode,
+	type:    Maybe(Stmt_Index),
 }
 
 Bucket :: struct {
@@ -14,26 +15,26 @@ Unit :: struct {
 
 ArrayDestructure :: struct {
 	using _: BaseNode,
-	idents:  [dynamic]IdentifierType,
+	idents:  [dynamic]Ident_Index,
 }
 
 RecordDestructure :: struct {
 	using _: BaseNode,
-	idents:  [dynamic]IdentifierType,
+	idents:  [dynamic]Ident_Index,
 }
 
 TupleDestructure :: struct {
 	using _: BaseNode,
-	idents:  [dynamic]IdentifierType,
+	idents:  [dynamic]Ident_Index,
 }
 
-Pointer :: distinct IdentifierType
-Deref :: distinct IdentifierType
+Pointer :: distinct Ident_Index
+Deref :: distinct Ident_Index
 
 IdentifierType :: union {
 	Identifier,
-	^Pointer,
-	^Deref,
+	Pointer,
+	Deref,
 	ArrayDestructure,
 	RecordDestructure,
 	TupleDestructure,

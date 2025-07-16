@@ -7,14 +7,11 @@ import "core:unicode"
 import "core:unicode/utf8"
 
 @(test)
-testing_utf8 :: proc(t: ^testing.T) {
-}
-
-@(test)
 test_lexer :: proc(t: ^testing.T) {
 	context.logger.lowest_level = log.Level.Debug
 
 	input := `
+		import "test"
 		let x = 1
 		let main (arg1: string) = {
 			if arg1 == "Hello World" {
@@ -35,5 +32,5 @@ test_lexer :: proc(t: ^testing.T) {
 		testing.fail(t)
 	}
 
-	lexer.log_tokens(l)
+	lexer.print_tokens(l^)
 }

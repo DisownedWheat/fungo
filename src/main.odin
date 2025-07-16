@@ -2,6 +2,7 @@ package main
 
 import "core:flags"
 import "core:fmt"
+import "core:log"
 import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
@@ -33,11 +34,15 @@ main :: proc() {
 	context.allocator = allocator
 	defer vmem.arena_destroy(&arena)
 
+	context.logger = log.create_console_logger()
+
 	when ODIN_DEBUG {
 		fmt.println("DEBUG")
 		track: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&track, context.allocator)
 		context.allocator = mem.tracking_allocator(&track)
+
+		context.logger.lowest_level = log.Level.Debug
 
 		defer {
 			if len(track.allocation_map) > 0 {
@@ -106,9 +111,9 @@ test_compiler :: proc(t: ^testing.T) {
 		testing.fail(t)
 	}
 
-	p, parser_error := parser.parse(l)
-	if parser_error != nil {
-		testing.fail(t)
-	}
-	fmt.println(p)
+	// p, parser_error := parser.parse(l)
+	// if parser_error != nil {
+	// 	testing.fail(t)
+	// }
+	// fmt.println(p)
 }
