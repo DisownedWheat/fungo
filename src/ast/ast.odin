@@ -90,6 +90,7 @@ LetStatement :: struct {
 }
 
 Block :: struct {
+	using _:    BaseNode,
 	statements: [dynamic]Stmt_Index,
 	args:       Maybe([dynamic]Ident_Index),
 }

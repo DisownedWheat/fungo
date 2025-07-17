@@ -5,6 +5,12 @@ import "../lexer"
 
 @(private)
 parse_identifier :: proc(p: ^Parser) -> (node: ast.Ident_Index, err: ParserError) {
+	// Check type literal after identifier is parsed
+	defer {
+		if check_colon(p.current) && parser_next(p) {
+
+		}
+	}
 	#partial switch p.current.kind {
 	case .Identifier:
 		identifier := ast.Identifier {
@@ -13,9 +19,6 @@ parse_identifier :: proc(p: ^Parser) -> (node: ast.Ident_Index, err: ParserError
 		if !parser_next(p) {
 			err = .Unexpected_EOF
 			return
-		}
-		if check_colon(p.current) && parser_next(p) {
-
 		}
 		node = parser_add(p, identifier)
 		return
