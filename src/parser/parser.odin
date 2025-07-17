@@ -281,24 +281,142 @@ parse_imports :: proc(p: ^Parser) -> (node: ast.Node_Index, err: ParserError) {
 }
 
 @(private)
-parse_expression :: proc(p: ^Parser) -> (idx: ast.Expr_Index, err: ParserError) {
-	#partial switch p.current.kind {
-	case .IntLiteral:
-		node := ast.IntLiteral {
-			token = p.current,
-		}
-		idx = parser_add(p, ast.Expression(node))
+parse_statement :: proc(p: ^Parser) -> (idx: ast.Stmt_Index, err: ParserError) {
+	if p.current.kind == .Let {
 		parser_next(p)
-	case:
-		err = .TODO
-		return
+		idx = parse_let_statement(p) or_return
+	} else {
+		expr := parse_expression(p) or_return
+		idx = ast.Stmt_Index(expr)
 	}
 	return
 }
 
 @(private)
+parse_function :: proc(p: ^Parser) -> (idx: ast.Expr_Index, err: ParserError) {
+
+	first_token: ^lexer.Token
+
+	// Parse the args
+	args := make([dynamic]ast.Ident_Index, p.allocator)
+	defer {
+		if err != nil {
+			delete(args)
+		}
+	}
+
+	if p.current.kind == .LParen {
+		parser_next(p)
+	}
+	for {
+		ident := parse_identifier(p) or_return
+		append(&args, ident)
+		if p.current.kind == .RParen {
+			parser_next(p)
+			break
+		}
+		if !check_comma(p.current) {
+			err = .Unexpected_Token
+			return
+		}
+		parser_next(p)
+	}
+
+	if p.current.kind != .LBrace {
+		err = .Unexpected_Token
+		return
+	}
+	first_token = p.current
+	parser_next(p)
+
+	stmts := make([dynamic]ast.Stmt_Index, p.allocator)
+	for {
+		if p.current.kind == .RBrace {
+			break
+		}
+		stmt := parse_statement(p) or_return
+		append(&stmts, stmt)
+	}
+	func := ast.Block {
+		token      = first_token,
+		statements = stmts,
+		args       = args,
+	}
+	idx = parser_add(p, ast.Expression(func))
+	return
+}
+
+@(private)
+parse_expression :: proc(p: ^Parser) -> (idx: ast.Expr_Index, err: ParserError) {
+	number := false
+	#partial switch p.current.kind {
+	case .IntLiteral:
+		number = true
+		node := ast.IntLiteral {
+			token = p.current,
+		}
+		idx = parser_add(p, ast.Expression(node))
+		parser_next(p)
+
+	case .LParen:
+		if parser_check_ahead(p, .RParen, lexer.TokenKind.LBrace) {
+			return parse_function(p)
+		}
+
+	case .LBrace:
+		start := p.current
+		parser_next(p)
+		stmts := make([dynamic]ast.Stmt_Index)
+		for p.current.kind != .RBrace {
+			if p.current.kind == .EOF {
+				err = .Unexpected_EOF
+				return
+			}
+			s := parse_statement(p) or_return
+			append(&stmts, s)
+		}
+
+		node := ast.Block {
+			token      = start,
+			statements = stmts,
+		}
+		idx = parser_add(p, ast.Expression(node))
+
+	case:
+		err = .TODO
+		return
+	}
+
+	// TODO: Handle function calls
+	if !number && p.current.kind == .LParen {}
+
+	// TODO: Handle indexing
+	if !number && p.current.kind == .LBracket {}
+
+	if p.current.kind == .Operator {
+		args := make([dynamic]ast.Expr_Index, p.allocator)
+		left := idx
+		append(&args, left)
+		operator := p.current
+
+		parser_next(p)
+
+		right := parse_expression(p) or_return
+		append(&args, right)
+		node := ast.FunctionCall {
+			token = operator,
+			args  = args,
+			op    = true,
+		}
+		idx = parser_add(p, ast.Expression(node))
+	}
+
+	return
+}
+
+@(private)
 parse_let_statement :: proc(p: ^Parser) -> (idx: ast.Stmt_Index, err: ParserError) {
-	first_token := p.current^
+	first_token := p.current
 
 	parser_next(p)
 	mutable := false
@@ -306,6 +424,7 @@ parse_let_statement :: proc(p: ^Parser) -> (idx: ast.Stmt_Index, err: ParserErro
 		mutable = true
 		parser_next(p)
 	}
+
 	ident := parse_identifier(p) or_return
 	if !check_operator(p.current, "=") {
 		err = .Unexpected_Token
@@ -315,7 +434,7 @@ parse_let_statement :: proc(p: ^Parser) -> (idx: ast.Stmt_Index, err: ParserErro
 	expr := parse_expression(p) or_return
 
 	let_stmt := ast.LetStatement {
-		token = &first_token,
+		token = first_token,
 		bind  = ident,
 		value = expr,
 	}
