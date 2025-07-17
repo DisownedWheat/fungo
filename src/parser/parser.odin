@@ -16,6 +16,8 @@ ParserError :: enum {
 	TODO,
 }
 
+Parser_Bool :: proc(p: ^Parser) -> bool
+Parser_Func :: proc(p: ^Parser)
 
 Parser :: struct {
 	tokens:            lexer.TokenList,
@@ -91,6 +93,15 @@ parser_next :: proc {
 }
 
 @(private)
+parser_rollback :: proc(p: ^Parser) {
+	defer {
+		p.current = &p.tokens[p.position]
+		p.peek = parser_peek(p)
+	}
+	p.position = p.rollback_position
+}
+
+@(private)
 parser_add_statment :: proc(parser: ^Parser, node: $I/ast.Statement) -> ast.Stmt_Index {
 	return ast.Stmt_Index(append(&parser.nodes, node))
 }
@@ -118,6 +129,71 @@ parser_add :: proc {
 	parser_add_statment,
 	parser_add_top_level,
 	parser_add_identifier,
+}
+
+@(private)
+parser_check_ahead_func :: proc(
+	p: ^Parser,
+	delimiter: lexer.TokenKind,
+	check: Parser_Bool,
+) -> bool {
+	p.rollback_position = p.position
+	defer parser_rollback(p)
+	for p.current.kind != delimiter {
+		result := parser_next(p)
+		if !result {
+			return false
+		}
+	}
+	return check(p)
+}
+
+parser_check_ahead_token :: proc(
+	p: ^Parser,
+	delimiter: lexer.TokenKind,
+	to_check: lexer.TokenKind,
+) -> bool {
+	p.rollback_position = p.position
+	defer parser_rollback(p)
+
+	for p.current.kind != delimiter {
+		result := parser_next(p)
+		if !result {
+			return false
+		}
+	}
+
+	return p.peek.kind == to_check
+}
+
+parser_check_ahead_string :: proc(
+	p: ^Parser,
+	delimiter: lexer.TokenKind,
+	to_check: lexer.TokenKind,
+	value: string,
+) -> bool {
+	p.rollback_position = p.position
+	defer parser_rollback(p)
+
+	for p.current.kind != delimiter {
+		result := parser_next(p)
+		if !result {
+			return false
+		}
+	}
+
+	if p.peek.kind != to_check {
+		return false
+	}
+
+	str := p.peek.lexer.input[p.peek.span[0]:p.peek.span[1]]
+	return str == value
+}
+
+parser_check_ahead :: proc {
+	parser_check_ahead_func,
+	parser_check_ahead_token,
+	parser_check_ahead_string,
 }
 
 @(private)
