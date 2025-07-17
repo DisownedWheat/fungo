@@ -44,6 +44,7 @@ TokenKind :: enum {
 	LBrace,
 	RBrace,
 	Let,
+	Fn,
 	Mut,
 	Go,
 	If,
@@ -122,6 +123,7 @@ Keywords: map[string]TokenKind = map[string]TokenKind {
 	"rec"       = .Rec,
 	"match"     = .Match,
 	"import"    = .Import,
+	"fn"        = .Fn,
 }
 
 Lexer :: struct {
