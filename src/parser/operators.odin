@@ -30,6 +30,14 @@ check_colon :: proc(token: ^lexer.Token) -> bool {
 	return (token.kind == .Operator) && (token.lexer.input[token.span[0]] == ':')
 }
 
+check_pointer :: proc(token: ^lexer.Token) -> bool {
+	return (token.kind == .Operator) && (token.lexer.input[token.span[0]] == '&')
+}
+
+check_deref :: proc(token: ^lexer.Token) -> bool {
+	return (token.kind == .Operator) && (token.lexer.input[token.span[0]] == '*')
+}
+
 check_operator :: proc(token: ^lexer.Token, expected_operator: string) -> bool {
 	if token.kind != .Operator {
 		return false

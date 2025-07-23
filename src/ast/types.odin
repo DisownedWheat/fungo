@@ -10,14 +10,14 @@ TypeLiteralType :: struct {
 	modules: [dynamic]ASTString,
 }
 
-PointerType :: distinct TypeLiteral
-SliceType :: distinct TypeLiteral
+PointerType :: distinct Stmt_Index
+SliceType :: distinct Stmt_Index
 
 TypeLiteral :: union {
 	UnitType,
 	TypeLiteralType,
-	^PointerType,
-	^SliceType,
+	PointerType,
+	SliceType,
 }
 
 RecordTypeField :: struct {

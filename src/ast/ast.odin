@@ -18,6 +18,7 @@ Stmt_List :: distinct [dynamic]Statement
 TopLevel_List :: distinct [dynamic]TopLevel
 
 Statement :: union {
+	TypeLiteral,
 	LetStatement,
 	ForLoop,
 	Expression,

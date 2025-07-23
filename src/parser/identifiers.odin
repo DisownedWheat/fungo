@@ -113,3 +113,8 @@ parse_identifier :: proc(p: ^Parser) -> (node: ast.Ident_Index, err: ParserError
 	}
 	return
 }
+
+@(private)
+parse_identifier_expression :: proc(p: ^Parser) -> (idx: ast.Expr_Index, err: ParserError) {
+	return
+}
