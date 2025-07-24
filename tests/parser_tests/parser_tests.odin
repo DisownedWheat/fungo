@@ -2,7 +2,8 @@ package parser_tests
 
 import test "../"
 import "../../src/lexer"
-import "../../src/parser"
+import parser "../../src/parser2"
+import "core:encoding/json"
 import "core:log"
 import "core:testing"
 import "core:unicode"
@@ -22,8 +23,7 @@ test_parser :: proc(t: ^testing.T) {
 		log.info("PARSER ERROR")
 		lexer.print_tokens([]lexer.Token{p.current^, p.peek^})
 		log.info("NODES")
-		log.info(p.nodes)
-		log.info(p.top_level)
+		log.error(json.marshal(p.module))
 		log.error(parser_err)
 		testing.fail(t)
 	}

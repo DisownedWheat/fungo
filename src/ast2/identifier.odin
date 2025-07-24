@@ -20,12 +20,12 @@ ArrayDestructure :: struct {
 
 RecordDestructure :: struct {
 	using _: BaseNode,
-	idents:  [dynamic]Identifier,
+	idents:  [dynamic]IdentifierType,
 }
 
 TupleDestructure :: struct {
 	using _: BaseNode,
-	idents:  [dynamic]Identifier,
+	idents:  [dynamic]IdentifierType,
 }
 
 Pointer :: struct {

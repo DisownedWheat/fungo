@@ -85,7 +85,7 @@ Block :: struct {
 IfExpression :: struct {
 	condition:   ^Expression,
 	consequent:  ^Expression,
-	alternative: Maybe(Expression),
+	alternative: Maybe(^Expression),
 }
 
 FunctionCall :: struct {

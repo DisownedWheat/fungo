@@ -10,7 +10,7 @@ import "core:strings"
 import "core:testing"
 import "core:unicode/utf8"
 import "lexer"
-import "parser"
+import parser "parser2"
 
 Command :: enum {
 	build,
