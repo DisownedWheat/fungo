@@ -3,7 +3,7 @@ import test
 import testing.mod
 import _ "alias"
 let x = 1
-let main (arg1: string) = {
+let main = (arg1: string) {
 	if arg1 == "Hello World" {
 		arg1.append('!')
 	}
