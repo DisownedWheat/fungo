@@ -23,7 +23,6 @@ test_parser :: proc(t: ^testing.T) {
 		log.info("PARSER ERROR")
 		lexer.print_tokens([]lexer.Token{p.current^, p.peek^})
 		log.info("NODES")
-		log.error(json.marshal(p.module))
 		log.error(parser_err)
 		testing.fail(t)
 	}

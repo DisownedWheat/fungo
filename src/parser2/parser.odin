@@ -403,6 +403,12 @@ parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Maybe(Parser
 		}
 		parser_next(p)
 
+	case .Identifier:
+		expr = ast.Identifier {
+			token = p.current,
+		}
+		parser_next(p)
+
 	case .If:
 		parser_next(p)
 		expr = parse_if_expression(p) or_return
