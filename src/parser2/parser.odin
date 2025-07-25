@@ -6,7 +6,13 @@ import "core:bytes"
 import "core:log"
 import "core:mem"
 
-Parser_Error :: enum {
+
+Parser_Error :: struct {
+	kind: Error_Kind,
+	ctx:  string,
+}
+
+Error_Kind :: enum {
 	Invalid_Import,
 	Invalid_TopLevel,
 	Invalid_Identifier,
@@ -15,7 +21,9 @@ Parser_Error :: enum {
 	TODO,
 }
 
+@(private)
 Parser_Bool :: proc(p: ^Parser) -> bool
+@(private)
 Parser_Func :: proc(p: ^Parser)
 
 Parser :: struct {
@@ -37,6 +45,7 @@ parser_peek :: proc(p: ^Parser) -> ^lexer.Token {
 	return lexer.eof_token()
 }
 
+// Creates a parser struct. Most AST nodes are heap allocated so the allocator passed through will be used
 @(private)
 parser_init :: proc(l: ^lexer.Lexer, allocator := context.allocator) -> Parser {
 	module := ast.ModuleDefinition {
@@ -94,6 +103,10 @@ parser_rollback :: proc(p: ^Parser) {
 	p.position = p.rollback_position
 }
 
+//Proceeds the parser position up until the next instance of the delimiter token and then runs the
+//provided procedure. If the delimiter is not found will return false. The parser position will
+//roll back to the current position after the provided procedure returns
+@(private)
 parser_check_ahead_func :: proc(
 	p: ^Parser,
 	delimiter: lexer.TokenKind,
@@ -110,6 +123,10 @@ parser_check_ahead_func :: proc(
 	return check(p)
 }
 
+//Proceeds the parser position up until the next instance of the delimiter token and then checks
+//whether the next token is the one provided. If the delimiter token is not found will return false.
+//The parser position will roll back to the current position after the peek token is checked
+@(private)
 parser_check_ahead_token :: proc(
 	p: ^Parser,
 	delimiter: lexer.TokenKind,
@@ -128,6 +145,10 @@ parser_check_ahead_token :: proc(
 	return p.peek.kind == to_check
 }
 
+//Proceeds the parser position up until the next instance of the delimiter token and then checks
+//whether the next token has a string value. If the delimiter token is not found will return false.
+//The parser position will roll back to the current position after the peek token is checked
+@(private)
 parser_check_ahead_string :: proc(
 	p: ^Parser,
 	delimiter: lexer.TokenKind,
@@ -152,6 +173,7 @@ parser_check_ahead_string :: proc(
 	return str == value
 }
 
+@(private)
 parser_check_ahead :: proc {
 	parser_check_ahead_func,
 	parser_check_ahead_token,
@@ -159,34 +181,37 @@ parser_check_ahead :: proc {
 }
 
 @(private)
-parse_go_import :: proc(p: ^Parser) -> (ast.GoImport, Parser_Error) {
-	imp: ast.GoImport
+parse_go_import :: proc(p: ^Parser) -> (imp: ast.GoImport, err: Maybe(Parser_Error)) {
 	#partial switch p.current.kind {
 	case .StringLiteral:
 		str := ast.ast_string_from_token(p.current)
-		imp := ast.GoImport {
+		imp = ast.GoImport {
 			module = str,
 		}
 		parser_next(p)
 	case .Identifier:
 		ident := p.current
 		if !parser_next(p) || p.current.kind != .StringLiteral {
-			return imp, .Invalid_Import
+			return imp, Parser_Error{kind = .Invalid_Import, ctx = "Go Import"}
 		}
 		str := ast.ast_string_from_token(p.current)
-		imp := ast.GoImport {
+		imp = ast.GoImport {
 			module = str,
 			alias  = ast.ast_string_from_token(ident),
 		}
 		parser_next(p)
 	case:
-		return imp, .Invalid_Import
+		err = Parser_Error {
+			kind = .Invalid_Import,
+			ctx  = "GoImport",
+		}
+		return
 	}
-	return imp, nil
+	return
 }
 
 @(private)
-parse_fungo_import :: proc(p: ^Parser) -> (node: ast.FungoImport, err: Parser_Error) {
+parse_fungo_import :: proc(p: ^Parser) -> (node: ast.FungoImport, err: Maybe(Parser_Error)) {
 	modules: [dynamic]ast.ASTString
 	defer {
 		if err != nil {
@@ -210,7 +235,10 @@ parse_fungo_import :: proc(p: ^Parser) -> (node: ast.FungoImport, err: Parser_Er
 					append(&node.modules, str)
 					parser_next(p)
 				case:
-					err = .Invalid_Import
+					err = Parser_Error {
+						kind = .Invalid_Import,
+						ctx  = "Fungo Import",
+					}
 					return
 				}
 			}
@@ -218,14 +246,17 @@ parse_fungo_import :: proc(p: ^Parser) -> (node: ast.FungoImport, err: Parser_Er
 			parser_next(p)
 		}
 	case:
-		err = .Invalid_Import
+		err = Parser_Error {
+			kind = .Invalid_Import,
+			ctx  = "Fungo Import",
+		}
 		return
 	}
 	return
 }
 
 @(private)
-parse_imports :: proc(p: ^Parser) -> (node: ast.TopLevel, err: Parser_Error) {
+parse_imports :: proc(p: ^Parser) -> (node: ast.TopLevel, err: Maybe(Parser_Error)) {
 	#partial switch p.current.kind {
 	case .StringLiteral:
 		node = parse_go_import(p) or_return
@@ -236,34 +267,37 @@ parse_imports :: proc(p: ^Parser) -> (node: ast.TopLevel, err: Parser_Error) {
 			node = parse_fungo_import(p) or_return
 		}
 	case:
-		err = .Invalid_Import
+		err = Parser_Error {
+			kind = .Invalid_Import,
+			ctx  = "Parse Imports",
+		}
 	}
 	return
 }
 
 @(private)
-parse_top_level :: proc(p: ^Parser) -> (node: ast.TopLevel, err: Parser_Error) {
+parse_top_level :: proc(p: ^Parser) -> (node: ast.TopLevel, err: Maybe(Parser_Error)) {
 	#partial switch p.current.kind {
 	case .Let:
 		node = parse_let_statement(p) or_return
 		return
 	case .Type:
-		err = .TODO
+		err = Parser_Error{.TODO, "Top Level"}
 		return
 	case .Module:
-		err = .TODO
+		err = Parser_Error{.TODO, "Top Level"}
 		return
 	case .Import:
 		parser_next(p)
 		return parse_imports(p)
 	case:
-		err = .Invalid_TopLevel
+		err = Parser_Error{.Invalid_TopLevel, "Top Level"}
 		return
 	}
 }
 
 @(private)
-parse_function :: proc(p: ^Parser) -> (expr: ast.Block, err: Parser_Error) {
+parse_function :: proc(p: ^Parser) -> (expr: ast.Block, err: Maybe(Parser_Error)) {
 	first_token: ^lexer.Token
 
 	args := make([dynamic]ast.IdentifierType, p.allocator)
@@ -285,14 +319,14 @@ parse_function :: proc(p: ^Parser) -> (expr: ast.Block, err: Parser_Error) {
 			break
 		}
 		if !check_comma(p.current) {
-			err = .Unexpected_Token
+			err = Parser_Error{.Unexpected_Token, "Function :: Args"}
 			return
 		}
 		parser_next(p)
 	}
 
 	if p.current.kind != .LBrace {
-		err = .Unexpected_Token
+		err = Parser_Error{.Unexpected_Token, "Function :: Block"}
 		return
 	}
 
@@ -318,22 +352,35 @@ parse_function :: proc(p: ^Parser) -> (expr: ast.Block, err: Parser_Error) {
 }
 
 @(private)
-parse_if_expression :: proc(p: ^Parser) -> (expr: ast.IfExpression, err: Parser_Error) {
+parse_if_expression :: proc(p: ^Parser) -> (expr: ast.IfExpression, err: Maybe(Parser_Error)) {
 	condition := parse_expression(p) or_return
 
 	if p.current.kind != .LBrace {
-		err = .Unexpected_Token
+		err = Parser_Error {
+			kind = .Unexpected_Token,
+			ctx  = "If Expression :: LBrace",
+		}
 		return
 	}
 
 	// This should return a block considering it's an LBrace
 	consequent := parse_expression(p) or_return
 
+	if p.current.kind == .Else {
+		parser_next(p)
+		if p.current.kind != .LBrace {
+			err = Parser_Error{.Unexpected_Token, "If Expression :: Else"}
+			return
+		}
+		alternate := parse_expression(p) or_return
+	}
+
+
 	return
 }
 
 @(private)
-parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Parser_Error) {
+parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Maybe(Parser_Error)) {
 	number := false
 	#partial switch p.current.kind {
 	case .IntLiteral:
@@ -365,7 +412,7 @@ parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Parser_Error
 			return parse_function(p)
 		}
 
-	// TODO: Add tuple parsing, and nested expression
+	// TODO: Add tuple parsing, and nested expressions
 
 	case .LBrace:
 		start := p.current
@@ -373,7 +420,7 @@ parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Parser_Error
 		stmts := make([dynamic]ast.Statement)
 		for p.current.kind != .RBrace {
 			if p.current.kind == .EOF {
-				err = .Unexpected_EOF
+				err = Parser_Error{.Unexpected_EOF, "Expression :: LBrace"}
 				return
 			}
 			s := parse_statement(p) or_return
@@ -386,7 +433,7 @@ parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Parser_Error
 		}
 
 	case:
-		err = .TODO
+		err = Parser_Error{.TODO, "Expression"}
 		return
 	}
 
@@ -416,7 +463,7 @@ parse_expression :: proc(p: ^Parser) -> (expr: ast.Expression, err: Parser_Error
 }
 
 @(private)
-parse_let_statement :: proc(p: ^Parser) -> (stmt: ast.LetStatement, err: Parser_Error) {
+parse_let_statement :: proc(p: ^Parser) -> (stmt: ast.LetStatement, err: Maybe(Parser_Error)) {
 	first_token := p.current
 	mutable := false
 
@@ -428,7 +475,9 @@ parse_let_statement :: proc(p: ^Parser) -> (stmt: ast.LetStatement, err: Parser_
 
 	ident := parse_identifier(p) or_return
 	if !check_operator(p.current, "=") {
-		err = .Unexpected_Token
+		err = Parser_Error {
+			kind = .Unexpected_Token,
+		}
 		return
 	}
 	parser_next(p)
@@ -445,7 +494,7 @@ parse_let_statement :: proc(p: ^Parser) -> (stmt: ast.LetStatement, err: Parser_
 }
 
 @(private)
-parse_statement :: proc(p: ^Parser) -> (stmt: ast.Statement, err: Parser_Error) {
+parse_statement :: proc(p: ^Parser) -> (stmt: ast.Statement, err: Maybe(Parser_Error)) {
 	if p.current.kind == .Let {
 		stmt = parse_let_statement(p) or_return
 		return
@@ -459,7 +508,7 @@ parse :: proc(
 	allocator := context.allocator,
 ) -> (
 	parser: Parser,
-	err: Parser_Error,
+	err: Maybe(Parser_Error),
 ) {
 	parser = parser_init(lexer, allocator)
 	context.allocator = parser.allocator

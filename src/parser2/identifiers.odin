@@ -4,7 +4,7 @@ import ast "../ast2"
 import "../lexer"
 
 @(private)
-parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_Error) {
+parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(Parser_Error)) {
 	// TODO: Check type literal after identifier is parsed
 	defer {
 		if check_colon(p.current) && parser_next(p) {
@@ -18,7 +18,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_
 			token = p.current,
 		}
 		if !parser_next(p) {
-			err = .Unexpected_EOF
+			err = Parser_Error {
+				kind = .Unexpected_EOF,
+				ctx  = "Identifier :: Identifier",
+			}
 			return
 		}
 		return
@@ -84,7 +87,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_
 		parser_next(p)
 		for p.current.kind != .RBrace {
 			if p.current.kind != .Identifier {
-				err = .Unexpected_Token
+				err = Parser_Error {
+					kind = .Unexpected_Token,
+					ctx  = "Identifier :: LBRACE",
+				}
 				return
 			}
 			n := ast.Identifier {
@@ -102,7 +108,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_
 				continue
 			}
 
-			err = .Unexpected_Token
+			err = Parser_Error {
+				kind = .Unexpected_Token,
+				ctx  = "Identifier :: LBRACE",
+			}
 			return
 		}
 		ident = ast.RecordDestructure {
@@ -111,15 +120,24 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_
 		}
 		return
 	case:
-		err = .Invalid_Identifier
+		err = Parser_Error {
+			kind = .Invalid_Identifier,
+			ctx  = "Identifier",
+		}
 	}
 
-	err = .TODO
+	err = Parser_Error {
+		kind = .TODO,
+		ctx  = "Identifier",
+	}
 	return
 }
 
 @(private)
 parse_identifier_expression :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_Error) {
-	err = .TODO
+	err = Parser_Error {
+		kind = .TODO,
+		ctx  = "Identifier Expression",
+	}
 	return
 }
