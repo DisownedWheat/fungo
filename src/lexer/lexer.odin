@@ -74,6 +74,7 @@ LexerState :: enum {
 	Operator,
 	Int,
 	Float,
+	Comment,
 }
 
 LexerErr :: enum {
@@ -302,6 +303,7 @@ parse_buffer :: proc(lexer: ^Lexer) {
 				lexer = lexer,
 			}
 		}
+	case .Comment:
 	}
 	append(&lexer.tokens, token)
 }
@@ -381,6 +383,7 @@ lex :: proc(
 			case '\'':
 				lexer.span_start += 1
 				parse_buffer(lexer)
+				log.warn(char)
 				lexer->change_state(.Default)
 			case:
 			}
@@ -452,6 +455,12 @@ lex :: proc(
 				lexer->change_state(.Default)
 			case:
 				parse_buffer(lexer)
+				lexer->change_state(.Default)
+			}
+		case .Comment:
+			switch char {
+			case '\t', ' ', '\n', '\r':
+				lexer.span_start = lexer.position + 1
 				lexer->change_state(.Default)
 			}
 		}
