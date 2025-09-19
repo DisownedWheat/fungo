@@ -2,13 +2,23 @@ package parser2
 
 import ast "../ast2"
 import "../lexer"
+import "base:runtime"
 
 @(private)
-parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(Parser_Error)) {
+parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_Error) {
+
 	// TODO: Check type literal after identifier is parsed
 	defer {
-		if check_colon(p.current) && parser_next(p) {
-			parser_next(p)
+		if err == nil && check_colon(p.current) {
+			if !parser_next(p) {
+				err = Parser_Error_Struct {
+					kind = .Invalid_Identifier,
+					ctx  = "Identifier",
+					loc  = #location(),
+				}
+			} else {
+				parser_next(p)
+			}
 		}
 	}
 
@@ -18,9 +28,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(P
 			token = p.current,
 		}
 		if !parser_next(p) {
-			err = Parser_Error {
+			err = Parser_Error_Struct {
 				kind = .Unexpected_EOF,
 				ctx  = "Identifier :: Identifier",
+				loc  = #location(),
 			}
 			return
 		}
@@ -76,6 +87,7 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(P
 			idents = idents,
 		}
 		return
+
 	case .LBrace:
 		initial_token := p.current
 		idents := make([dynamic]ast.IdentifierType, p.allocator)
@@ -87,9 +99,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(P
 		parser_next(p)
 		for p.current.kind != .RBrace {
 			if p.current.kind != .Identifier {
-				err = Parser_Error {
+				err = Parser_Error_Struct {
 					kind = .Unexpected_Token,
 					ctx  = "Identifier :: LBRACE",
+					loc  = #location(),
 				}
 				return
 			}
@@ -108,9 +121,10 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(P
 				continue
 			}
 
-			err = Parser_Error {
+			err = Parser_Error_Struct {
 				kind = .Unexpected_Token,
 				ctx  = "Identifier :: LBRACE",
+				loc  = #location(),
 			}
 			return
 		}
@@ -119,25 +133,29 @@ parse_identifier :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Maybe(P
 			idents = idents,
 		}
 		return
+
 	case:
-		err = Parser_Error {
+		err = Parser_Error_Struct {
 			kind = .Invalid_Identifier,
 			ctx  = "Identifier",
+			loc  = #location(),
 		}
 	}
 
-	err = Parser_Error {
+	err = Parser_Error_Struct {
 		kind = .TODO,
 		ctx  = "Identifier",
+		loc  = #location(),
 	}
 	return
 }
 
 @(private)
 parse_identifier_expression :: proc(p: ^Parser) -> (ident: ast.IdentifierType, err: Parser_Error) {
-	err = Parser_Error {
+	err = Parser_Error_Struct {
 		kind = .TODO,
 		ctx  = "Identifier Expression",
+		loc  = #location(),
 	}
 	return
 }

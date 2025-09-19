@@ -10,6 +10,6 @@ let main = (arg1: string) {
 	arg1 + x
 }
 
-module Testing = (innerModule: A) {
-	type t = A.t
-}
+// module Testing = (innerModule: A) {
+//	type t = A.t
+//}

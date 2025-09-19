@@ -18,7 +18,7 @@ test_parser :: proc(t: ^testing.T) {
 	if lexer_err != nil {
 		testing.fail(t)
 	}
-	p, parser_err := parser.parse(l, context.allocator)
+	p, parser_err := parser.parse(l.tokens[:], l.file_name, context.allocator)
 	if parser_err != nil {
 		log.info("PARSER ERROR")
 		lexer.print_tokens([]lexer.Token{p.current^, p.peek^})

@@ -79,7 +79,7 @@ main :: proc() {
 	}
 	fmt.println(l.input)
 
-	p, parser_error := parser.parse(l)
+	p, parser_error := parser.parse(l.tokens[:], l.file_name)
 	if parser_error != nil {
 		fmt.eprintfln("Error parsing input: %v", parser_error)
 	}
